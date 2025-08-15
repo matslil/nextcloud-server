@@ -1,0 +1,317 @@
+# ucore-autoinstall.bu
+variant: fcos
+version: 1.6.0
+
+# --- Users / SSH ---
+passwd:
+  users:
+    - name: core
+      groups: [ wheel ]
+      ssh_authorized_keys:
+        - {{CORE_SSH_KEY}}
+      password_hash: {{CORE_PW_HASH}}
+
+# --- Partitions ---
+# We keep FCOS defaults (XFS root). No custom root FS changes here.
+
+# --- Files we need on first boot ---
+storage:
+  directories:
+    - path: /var/lib/setup
+      mode: 0755
+    - path: /var/home/core/.config/containers/systemd
+      mode: 0755
+      user:
+        name: core
+      group:
+        name: core
+    - path: /var/home/core/nextcloud
+      mode: 0700
+      user: { name: core }
+      group: { name: core }
+    - path: /var/home/core/redis
+      mode: 0700
+      user: { name: core }
+      group: { name: core }
+    - path: /var/home/core/caddy
+      mode: 0755
+      user: { name: core }
+      group: { name: core }
+
+  files:
+    # ----- ENV/secret files -----
+    - path: /var/home/core/nextcloud/postgres.env
+      mode: 0600
+      user: { name: core }
+      group: { name: core }
+      contents:
+        inline: |
+          POSTGRES_DB=nextcloud
+          POSTGRES_USER=nextcloud
+          POSTGRES_PASSWORD={{POSTGRESQL_PW}}
+
+    # Optional Nextcloud overrides can go here
+    - path: /var/home/core/nextcloud/php.ini
+      mode: 0644
+      user: { name: core }
+      group: { name: core }
+      contents:
+        inline: |
+          memory_limit = 512M
+          upload_max_filesize = 2G
+          post_max_size = 2G
+
+    # Caddyfile: reverse proxy to Nextcloud (TLS internal by default; swap for real domain later)
+    - path: /var/home/core/caddy/Caddyfile
+      mode: 0644
+      user: { name: core }
+      group: { name: core }
+      contents:
+        inline: |
+          {
+            email admin@{{DOMAIN}}
+          }
+          :80 {
+            redir https://{host}{uri}
+          }
+          :443 {
+            tls internal
+            encode zstd gzip
+            header {
+              # basic security headers; adjust as needed
+              Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+              X-Content-Type-Options "nosniff"
+              X-Frame-Options "SAMEORIGIN"
+              Referrer-Policy "strict-origin-when-cross-origin"
+            }
+            reverse_proxy nextcloud:80
+          }
+
+    # ----- Rootless Quadlet units (user services) -----
+    # PostgreSQL
+    - path: /var/home/core/.config/containers/systemd/postgres.container
+      mode: 0644
+      user: { name: core }
+      group: { name: core }
+      contents:
+        inline: |
+          [Unit]
+          Description=PostgreSQL (rootless)
+
+          [Container]
+          Image=postgres:16
+          Network=nextcloud-net
+          # ZFS dataset mounted at /srv/postgres will be bind-mounted
+          Volume=/srv/postgres:/var/lib/postgresql/data:Z
+          EnvironmentFile=%h/nextcloud/postgres.env
+
+          [Service]
+          Restart=always
+
+          [Install]
+          WantedBy=default.target
+
+    # Redis
+    - path: /var/home/core/.config/containers/systemd/redis.container
+      mode: 0644
+      user: { name: core }
+      group: { name: core }
+      contents:
+        inline: |
+          [Unit]
+          Description=Redis (rootless)
+
+          [Container]
+          Image=redis:7
+          Network=nextcloud-net
+          Volume=/srv/redis:/data:Z
+          Args=--appendonly yes
+
+          [Service]
+          Restart=always
+
+          [Install]
+          WantedBy=default.target
+
+    # Nextcloud
+    - path: /var/home/core/.config/containers/systemd/nextcloud.container
+      mode: 0644
+      user: { name: core }
+      group: { name: core }
+      contents:
+        inline: |
+          [Unit]
+          Description=Nextcloud (rootless)
+          After=postgres.service redis.service
+          Wants=postgres.service redis.service
+
+          [Container]
+          Image=nextcloud:stable
+          Network=nextcloud-net
+          Volume=/srv/nextcloud:/var/www/html:Z
+          Volume=%h/nextcloud/php.ini:/usr/local/etc/php/conf.d/zzz-custom.ini:Z
+          Environment=POSTGRES_HOST=postgres
+          Environment=POSTGRES_DB=nextcloud
+          Environment=POSTGRES_USER=nextcloud
+          EnvironmentFile=%h/nextcloud/postgres.env
+
+          [Service]
+          Restart=always
+
+          [Install]
+          WantedBy=default.target
+
+    # Caddy (rootless, publishing 80/443)
+    - path: /var/home/core/.config/containers/systemd/caddy.container
+      mode: 0644
+      user: { name: core }
+      group: { name: core }
+      contents:
+        inline: |
+          [Unit]
+          Description=Caddy (rootless) reverse proxy
+
+          [Container]
+          Image=caddy:2
+          Network=nextcloud-net
+          PublishPort=80:80
+          PublishPort=443:443
+          Volume=/srv/caddy/data:/data:Z
+          Volume=/srv/caddy/config:/config:Z
+          Volume=%h/caddy/Caddyfile:/etc/caddy/Caddyfile:Z
+
+          [Service]
+          Restart=always
+
+          [Install]
+          WantedBy=default.target
+
+    # ----- tmpfiles rule just in case the config dir is missing early -----
+    - path: /etc/tmpfiles.d/rootless-containers.conf
+      mode: 0644
+      contents:
+        inline: |
+          d /var/home/core/.config/containers/systemd 0755 core core -
+
+# --- Systemd orchestration ---
+systemd:
+  units:
+    # 1) Rebase to uCore (stable, non-NVIDIA) on first boot, then reboot
+    - name: ucore-rebase.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Rebase this system to uCore (stable)
+        ConditionPathExists=!/var/lib/setup/ucore-rebased
+        After=network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/bin/rpm-ostree rebase ostree-image-signed:docker://ghcr.io/ublue-os/ucore:stable
+        ExecStart=/usr/bin/touch /var/lib/setup/ucore-rebased
+        ExecStart=/usr/bin/systemctl reboot
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # 2) After reboot (now on uCore), create ZFS pool & datasets (idempotent)
+    - name: zfs-setup.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Create ZFS tank (RAIDZ2) and tuned datasets
+        ConditionPathExists=!/var/lib/setup/zfs-ready
+        After=network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/sbin/modprobe zfs
+        # Create pool on disks /dev/sdb..e; adjust if your IDs differ.
+        ExecStart=/usr/bin/bash -eux -c 'zpool list tank || zpool create -f -o ashift=12 tank raidz2 /dev/sdb /dev/sdc /dev/sdd /dev/sde'
+        # Recommended dataset settings:
+        # - compression=zstd (good ratio, low CPU)
+        # - atime=off (less metadata churn)
+        # - recordsize tuned per workload
+        ExecStart=/usr/bin/bash -eux -c 'zfs list tank/nextcloud || zfs create -o mountpoint=/srv/nextcloud -o compression=zstd -o atime=off -o recordsize=128K tank/nextcloud'
+        ExecStart=/usr/bin/bash -eux -c 'zfs list tank/postgres  || zfs create -o mountpoint=/srv/postgres  -o compression=zstd -o atime=off -o recordsize=16K  tank/postgres'
+        ExecStart=/usr/bin/bash -eux -c 'zfs list tank/redis     || zfs create -o mountpoint=/srv/redis     -o compression=zstd -o atime=off                   tank/redis'
+        ExecStart=/usr/bin/bash -eux -c 'zfs list tank/caddy     || zfs create -o mountpoint=/srv/caddy     -o compression=zstd -o atime=off -o recordsize=1M  tank/caddy'
+        ExecStart=/usr/bin/chown -R core:core /srv /var/home/core
+        ExecStart=/usr/bin/touch /var/lib/setup/zfs-ready
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # 3) Create a dedicated rootless Podman network for the stack
+    - name: podman-network@nextcloud-net.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Rootless Podman network nextcloud-net
+        After=network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        User=core
+        ExecStart=/usr/bin/podman network exists nextcloud-net || /usr/bin/podman network create nextcloud-net
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # 4) Allow user services to run without login (needed for rootless Quadlet)
+    - name: enable-linger-core.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Enable user lingering for core
+        After=multi-user.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/bin/loginctl enable-linger core
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # 5) Enable and start the rootless Quadlet units as the core user
+    - name: stack-rootless-enable.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Enable & start rootless Quadlet services
+        After=zfs-setup.service podman-network@nextcloud-net.service enable-linger-core.service
+        Wants=zfs-setup.service podman-network@nextcloud-net.service enable-linger-core.service
+
+        [Service]
+        Type=oneshot
+        User=core
+        Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+        ExecStart=/usr/bin/systemctl --user daemon-reload
+        ExecStart=/usr/bin/systemctl --user enable --now postgres.service
+        ExecStart=/usr/bin/systemctl --user enable --now redis.service
+        ExecStart=/usr/bin/systemctl --user enable --now nextcloud.service
+        ExecStart=/usr/bin/systemctl --user enable --now caddy.service
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # 6) Open firewall for HTTP/HTTPS (uCore includes firewalld)
+    - name: open-http-https.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Open firewall ports 80/443
+        After=network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/bin/bash -c 'firewall-cmd --quiet --state && firewall-cmd --permanent --add-service=http --add-service=https || true'
+        ExecStart=/usr/bin/bash -c 'firewall-cmd --quiet --reload || true'
+
+        [Install]
+        WantedBy=multi-user.target
+
