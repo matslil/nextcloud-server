@@ -1,0 +1,14 @@
+Preparations
+============
+
+Ensure you have `coreos-installer` and `butane` executables.
+
+To install them on Fedora:
+
+    sudo dnf install coreos-installer butane python3-jinja2-cli
+
+To install them on Ubuntu:
+
+    sudo apt install podman butane and install coreos-installer
+
+
