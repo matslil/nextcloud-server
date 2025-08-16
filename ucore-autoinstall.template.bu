@@ -25,6 +25,25 @@ storage:
       mode: 0644
       contents: { inline: "" }
 
+    # msmtp config (replace with your Gmail address + app password)
+    - path: /etc/msmtprc
+      mode: 0600
+      contents:
+        inline: |
+          defaults
+          auth           on
+          tls            on
+          tls_trust_file /etc/ssl/certs/ca-bundle.crt
+          logfile        /var/log/msmtp.log
+
+          account        gmail
+          host           smtp.gmail.com
+          port           587
+          from           YOUR_ADDRESS@gmail.com
+          user           YOUR_ADDRESS@gmail.com
+          password       YOUR_GMAIL_APP_PASSWORD
+          account default : gmail
+
     # ZFS setup script (creates pool/datasets on first boot after rebase)
     - path: /usr/local/bin/zfs-setup
       mode: 0755
@@ -187,6 +206,7 @@ storage:
           Description=PostgreSQL for Nextcloud (rootless)
           After=nextcloud.network
           Requires=nextcloud.network
+          OnFailure=mail-notify@%n.service
 
           [Container]
           Image=postgres:16
@@ -218,6 +238,7 @@ storage:
           Description=Redis for Nextcloud (rootless, with auth)
           After=nextcloud.network
           Requires=nextcloud.network
+          OnFailure=mail-notify@%n.service
 
           [Container]
           Image=redis:7
@@ -245,6 +266,7 @@ storage:
           Description=Nextcloud (rootless)
           After=postgres.service redis.service nextcloud.network
           Requires=postgres.service redis.service nextcloud.network
+          OnFailure=mail-notify@%n.service
 
           [Container]
           Image=nextcloud:29-apache
@@ -274,6 +296,7 @@ storage:
           Description=Caddy reverse proxy for Nextcloud (rootless, private cert)
           After=nextcloud.service nextcloud.network
           Requires=nextcloud.network
+          OnFailure=mail-notify@%n.service
 
           [Container]
           Image=caddy:2
@@ -301,6 +324,7 @@ storage:
         inline: |
           [Unit]
           Description=Weekly PostgreSQL amcheck (online checks)
+          OnFailure=mail-notify@%n.service
 
           [Service]
           Type=oneshot
@@ -411,4 +435,58 @@ systemd:
 
         [Install]
         WantedBy=multi-user.target
+
+    # Service: Run a ZFS scrub
+    - name: zfs-scrub.service
+      contents: |
+        [Unit]
+        Description=ZFS scrub of storage pool
+        Wants=zfs.target
+        After=zfs.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/sbin/zpool scrub tank
+
+    # Timer: Run weekly (Sunday 02:00)
+    - name: zfs-scrub.timer
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Weekly ZFS scrub
+
+        [Timer]
+        OnCalendar=Sun *-*-* 02:00:00
+        Persistent=true
+
+        [Install]
+        WantedBy=timers.target
+
+    # Notify by email at boot
+    - name: boot-mail.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Send boot notification email
+        After=network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/bin/sh -c "echo 'System $(hostname) booted at $(date)' | msmtp -a default YOUR_ADDRESS@gmail.com"
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # Template for failure notifications
+    - name: mail-notify@.service
+      contents: |
+        [Unit]
+        Description=Send failure notification email for %i
+        After=network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/bin/sh -c "echo 'Service %i failed on $(hostname) at $(date)' | msmtp -a default YOUR_ADDRESS@gmail.com"
 
