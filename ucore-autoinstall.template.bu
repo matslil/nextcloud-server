@@ -89,8 +89,8 @@ storage:
       contents:
         inline: |
           memory_limit = 512M
-          upload_max_filesize = 2G
-          post_max_size = 2G
+          upload_max_filesize = 24G
+          post_max_size = 24G
 
     # Caddyfile: reverse proxy to Nextcloud (TLS internal by default; swap for real domain later)
     - path: /var/home/core/caddy/Caddyfile
@@ -227,26 +227,38 @@ storage:
 # --- Systemd orchestration ---
 systemd:
   units:
-    # 1) Rebase to uCore (stable, non-NVIDIA) on first boot, then reboot
-    - name: ucore-rebase.service
+    # Step 1: Install unsigned raw image
+    - name: firstboot-install.service
       enabled: true
       contents: |
         [Unit]
-        Description=Rebase this system to uCore (stable)
-        ConditionPathExists=!/var/lib/setup/ucore-rebased
+        Description=Install unsigned uCore minimal image on first boot
+        ConditionFirstBoot=yes
         After=network-online.target
         Wants=network-online.target
 
         [Service]
         Type=oneshot
-        ExecStart=/usr/bin/rpm-ostree rebase ostree-image-signed:docker://ghcr.io/ublue-os/ucore:stable
-        ExecStart=/usr/bin/touch /var/lib/setup/ucore-rebased
+        ExecStart=/usr/bin/coreos-installer install /dev/sda \
+          --image-url=https://github.com/containers/ucore/releases/download/v0.5.1/ucore-minimal-0.5.1.raw.xz \
+          --insecure-ignition
         ExecStart=/usr/bin/systemctl reboot
 
-        [Install]
-        WantedBy=multi-user.target
+    # Step 2: Rebase into signed stream
+    - name: rebase-to-signed.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Rebase to signed uCore minimal stream
+        ConditionFirstBoot=no
+        After=network-online.target
+        Wants=network-online.target
 
-    # 2) After reboot (now on uCore), create ZFS pool & datasets (idempotent)
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/bin/rpm-ostree rebase ostree-unverified-registry:ghcr.io/containers/ucore-minimal:stable
+
+    # Step 3) After reboot (now on proper uCore), create ZFS pool & datasets (idempotent)
     - name: zfs-setup.service
       enabled: true
       contents: |
@@ -275,7 +287,11 @@ systemd:
         [Install]
         WantedBy=multi-user.target
 
-    # 3) Create a dedicated rootless Podman network for the stack
+    #
+    # After this point, we should have the core OS fully functional
+    #
+
+    # Create a dedicated rootless Podman network for the stack
     - name: podman-network@nextcloud-net.service
       enabled: true
       contents: |
@@ -292,7 +308,7 @@ systemd:
         [Install]
         WantedBy=multi-user.target
 
-    # 4) Allow user services to run without login (needed for rootless Quadlet)
+    # Allow user services to run without login (needed for rootless Quadlet)
     - name: enable-linger-core.service
       enabled: true
       contents: |
@@ -307,7 +323,7 @@ systemd:
         [Install]
         WantedBy=multi-user.target
 
-    # 5) Enable and start the rootless Quadlet units as the core user
+    # Enable and start the rootless Quadlet units as the core user
     - name: stack-rootless-enable.service
       enabled: true
       contents: |
@@ -329,7 +345,7 @@ systemd:
         [Install]
         WantedBy=multi-user.target
 
-    # 6) Open firewall for HTTP/HTTPS (uCore includes firewalld)
+    # Open firewall for HTTP/HTTPS (uCore includes firewalld)
     - name: open-http-https.service
       enabled: true
       contents: |
