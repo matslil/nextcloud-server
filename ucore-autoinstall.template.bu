@@ -127,7 +127,7 @@ storage:
             }
           }
 
-    # Environment secrets for containers (edit values!)
+    # Nextcloud environment
     - path: /var/home/core/.config/containers/nextcloud.env
       mode: 0600
       user: { name: core }
@@ -143,6 +143,7 @@ storage:
           REDIS_HOST_PASSWORD=
           NEXTCLOUD_TRUSTED_DOMAINS=your.domain.tld
 
+    # Postgres environment
     - path: /var/home/core/.config/containers/postgres.env
       mode: 0600
       user: { name: core }
@@ -153,8 +154,16 @@ storage:
           POSTGRES_USER=nextcloud
           POSTGRES_PASSWORD=CHANGE_ME_STRONG_DB_PASSWORD
 
-    # Quadlet user units (rootless containers)
-    # Network used by all containers
+    # Redis environment
+    - path: /var/home/core/.config/containers/redis.env
+      mode: 0600
+      user: { name: core }
+      group: { name: core }
+      contents:
+        inline: |
+          REDIS_PASSWORD=CHANGE_ME_STRONG_REDIS_PASSWORD
+
+    # Quadlet user units
     - path: /var/home/core/.config/containers/systemd/nextcloud.network
       mode: 0644
       user: { name: core }
@@ -206,7 +215,7 @@ storage:
       contents:
         inline: |
           [Unit]
-          Description=Redis for Nextcloud (rootless)
+          Description=Redis for Nextcloud (rootless, with auth)
           After=nextcloud.network
           Requires=nextcloud.network
 
@@ -214,9 +223,10 @@ storage:
           Image=redis:7
           Name=redis
           Network=nextcloudnet
-          # Append-only persistence on ZFS dataset
+          EnvironmentFile=%h/.config/containers/redis.env
           Volume=/srv/pods/redis:/data:Z
           Arg=--appendonly yes
+          Arg=--requirepass $${REDIS_PASSWORD}
 
           [Service]
           Restart=always
