@@ -346,6 +346,55 @@ systemd:
         [Install]
         WantedBy=multi-user.target
 
+    # --- ZFS Weekly Scrub ---
+    - name: zfs-scrub@.service
+      contents: |
+        [Unit]
+        Description=ZFS scrub on %i
+        OnFailure=notify-admin@%n.service
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/sbin/zpool scrub %i
+
+    - name: zfs-scrub@data.timer
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Weekly ZFS scrub on data pool
+
+        [Timer]
+        OnCalendar=Sun 03:00
+        Persistent=true
+
+        [Install]
+        WantedBy=timers.target
+
+    # --- PostgreSQL Weekly Validation ---
+    - name: pg-validate.service
+      contents: |
+        [Unit]
+        Description=Weekly PostgreSQL DB validation
+        OnFailure=notify-admin@%n.service
+
+        [Service]
+        Type=oneshot
+        User=core
+        ExecStart=/bin/bash -c 'podman exec postgres pg_dump --schema-only --no-owner --no-privileges --username=nextcloud nextcloud > /dev/null'
+
+    - name: pg-validate.timer
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Weekly PostgreSQL validation
+
+        [Timer]
+        OnCalendar=Mon 04:00
+        Persistent=true
+
+        [Install]
+        WantedBy=timers.target
+
     # --- Notification Handler ---
     - name: notify-admin@.service
       contents: |
