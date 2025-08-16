@@ -1,4 +1,4 @@
-# ucore-autoinstall.bu
+# ucore-autoinstall.bu (after macro expansions)
 variant: fcos
 version: 1.6.0
 
@@ -39,6 +39,37 @@ storage:
       group: { name: core }
 
   files:
+    # msmtp configuration
+    - path: /etc/msmtprc
+      mode: 0600
+      overwrite: true
+      contents:
+        inline: |
+          defaults
+          auth           on
+          tls            on
+          tls_starttls   on
+          tls_trust_file /etc/ssl/certs/ca-bundle.crt
+          logfile        /var/log/msmtp.log
+
+          account        gmail
+          host           smtp.gmail.com
+          port           587
+          from           {{ADMIN_EMAIL}}
+          user           {{ADMIN_EMAIL}}
+          password       {{GMAIL_APP_PW}}
+
+          account default : gmail
+
+    # symlink sendmail → msmtp
+    - path: /usr/local/bin/sendmail
+      mode: 0755
+      overwrite: true
+      contents:
+        inline: |
+          #!/bin/sh
+          exec /usr/bin/msmtp "$@"
+
     # ----- ENV/secret files -----
     - path: /var/home/core/nextcloud/postgres.env
       mode: 0600
@@ -69,7 +100,7 @@ storage:
       contents:
         inline: |
           {
-            email admin@{{DOMAIN}}
+            email {{ADMIN_EMAIL}}
           }
           :80 {
             redir https://{host}{uri}
@@ -311,6 +342,31 @@ systemd:
         Type=oneshot
         ExecStart=/usr/bin/bash -c 'firewall-cmd --quiet --state && firewall-cmd --permanent --add-service=http --add-service=https || true'
         ExecStart=/usr/bin/bash -c 'firewall-cmd --quiet --reload || true'
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # --- Notification Handler ---
+    - name: notify-admin@.service
+      contents: |
+        [Unit]
+        Description=Notify admin of failure in %i
+
+        [Service]
+        Type=oneshot
+        ExecStart=/bin/bash -c 'printf \'Subject: [ALERT] Systemd unit %i failed on %s\n\n%s\' "$(hostname)" "$(journalctl -u %i -n 50 --no-pager)" | /usr/local/bin/sendmail "{{ADMIN_EMAIL}}"'
+
+    - name: boot-notify.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Send notification email on every boot
+        After=network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/bin/bash -c 'printf \'Subject: [BOOT] %s restarted at %s\n\n\' "$(hostname)" "$(date)" | /usr/local/bin/sendmail "{{ADMIN_EMAIL}}"'
 
         [Install]
         WantedBy=multi-user.target
