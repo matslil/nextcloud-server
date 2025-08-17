@@ -27,7 +27,7 @@ storage:
 
   links:
     # Place public certificate in a place accessible from web
-    - path /srv/pods/caddy/var/www/{{CERT_FILE_PUB}}
+    - path: /srv/pods/caddy/var/www/{{CERT_FILE_PUB}}
       target: srv/pods/caddy/pki/authorities/local/root.crt
       hard: false
 
