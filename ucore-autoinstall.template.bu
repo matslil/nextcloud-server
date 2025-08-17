@@ -39,9 +39,9 @@ storage:
           account        gmail
           host           smtp.gmail.com
           port           587
-          from           YOUR_ADDRESS@gmail.com
-          user           YOUR_ADDRESS@gmail.com
-          password       YOUR_GMAIL_APP_PASSWORD
+          from           {{ADMIN_EMAIL}}
+          user           {{ADMIN_EMAIL}}
+          password       {GMAIL_APP_PW}}
           account default : gmail
 
     # ZFS setup script (creates pool/datasets on first boot after rebase)
@@ -116,7 +116,7 @@ storage:
 
           # HTTPS with your private cert/key mounted into /data/certs
           :443 {
-            tls /data/certs/liljegren.crt /data/certs/liljegren.key
+            tls /data/certs/{{CERT_FILE_PUB}} /data/certs/{{CERT_FILE_PRIV}}
             encode zstd gzip
 
             # Allow downloading the public cert at /caddy/liljegren.crt
@@ -159,8 +159,8 @@ storage:
           NEXTCLOUD_ADMIN_USER=admin
           NEXTCLOUD_ADMIN_PASSWORD={{NEXTCLOUD_ADMIN_PW}}
           REDIS_HOST=redis
-          REDIS_HOST_PASSWORD=
-          NEXTCLOUD_TRUSTED_DOMAINS=your.domain.tld
+          REDIS_HOST_PASSWORD={{REDIS_PW}}
+          NEXTCLOUD_TRUSTED_DOMAINS={{NEXTCLOUD_TRUSTED_DOMAIN}}
 
     # Postgres environment
     - path: /var/home/core/.config/containers/postgres.env
@@ -171,7 +171,7 @@ storage:
         inline: |
           POSTGRES_DB=nextcloud
           POSTGRES_USER=nextcloud
-          POSTGRES_PASSWORD=CHANGE_ME_STRONG_DB_PASSWORD
+          POSTGRES_PASSWORD={{POSTGRESQL_PW}}
 
     # Redis environment
     - path: /var/home/core/.config/containers/redis.env
@@ -180,7 +180,7 @@ storage:
       group: { name: core }
       contents:
         inline: |
-          REDIS_PASSWORD=CHANGE_ME_STRONG_REDIS_PASSWORD
+          REDIS_PASSWORD={{REDIS_PW}}
 
     # Quadlet user units
     - path: /var/home/core/.config/containers/systemd/nextcloud.network
@@ -348,8 +348,19 @@ storage:
           WantedBy=timers.target
 
 systemd:
+
+  #
+  # Privileged system wide containers
+  #
+
   units:
-    # --- uCore recommended auto-rebase (unsigned first, then signed), then reboot ---
+
+    #
+    # SystemD services handling setup of the system,
+    # These services only run once.
+    #
+
+    # Run on first boot, rebases from CoreOS to unsigned uCore distro
     - name: ucore-unsigned-autorebase.service
       enabled: true
       contents: |
@@ -371,6 +382,7 @@ systemd:
         [Install]
         WantedBy=multi-user.target
 
+    # Run on second boot, rebase from unsigned uCore to signed uCore distro
     - name: ucore-signed-autorebase.service
       enabled: true
       contents: |
@@ -392,7 +404,7 @@ systemd:
         [Install]
         WantedBy=multi-user.target
 
-    # Post-rebase setup: enable firewall services, ZFS pool/datasets, start containers, timers
+    # Run on third boot, enable firewall services, ZFS pool/datasets, start containers, timers
     - name: post-setup.service
       enabled: true
       contents: |
@@ -436,13 +448,18 @@ systemd:
         [Install]
         WantedBy=multi-user.target
 
-    # Service: Run a ZFS scrub
+    #
+    # SystemD services run once setup is completed.
+    #
+
+    # Service: Run a ZFS scrub, triggered by zfs-scrub.timer
     - name: zfs-scrub.service
       contents: |
         [Unit]
         Description=ZFS scrub of storage pool
         Wants=zfs.target
         After=zfs.target
+        OnFailure=mail-notify@%n.service
 
         [Service]
         Type=oneshot
@@ -462,7 +479,8 @@ systemd:
         [Install]
         WantedBy=timers.target
 
-    # Notify by email at boot
+    # Send e-mail notification at each reboot
+    # This is both to indicate that e-mail notifications work, as well as informing about reboots
     - name: boot-mail.service
       enabled: true
       contents: |
@@ -473,12 +491,14 @@ systemd:
 
         [Service]
         Type=oneshot
-        ExecStart=/bin/sh -c "echo 'System $(hostname) booted at $(date)' | msmtp -a default YOUR_ADDRESS@gmail.com"
+        ExecStart=/bin/sh -c "echo -e 'Subject: [NextCloud server] System $(hostname) booted at $(date)' | msmtp -t {{ADMIN_EMAIL}}"
 
         [Install]
         WantedBy=multi-user.target
 
     # Template for failure notifications
+    # To use this template, add the following line to systemd service in unit section:
+    #   OnFailure=mail-notify@%n.service
     - name: mail-notify@.service
       contents: |
         [Unit]
@@ -488,5 +508,5 @@ systemd:
 
         [Service]
         Type=oneshot
-        ExecStart=/bin/sh -c "echo 'Service %i failed on $(hostname) at $(date)' | msmtp -a default YOUR_ADDRESS@gmail.com"
+        ExecStart=/bin/sh -c "echo -e 'Subject: [NextCloud server] Service %i failed on $(hostname) at $(date)' | msmtp -t {{ADMIN_EMAIL}}"
 
