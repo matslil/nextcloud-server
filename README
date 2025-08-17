@@ -1,3 +1,16 @@
+Welcome to NextCloud server repository!
+
+This repository implements needed scripts for spinning up a new NextCloud server. The goal is to
+be able to deploy a new NextCloud instance without a lot of hassle.
+
+The process is as follows:
+
+1. Install needed packages used in the ISO image build, see section "Preparation" below.
+2. Perform the actual build, see section "Build" below.
+3. Write the image to an USB stick, and boot the server with it, see section "Deploy".
+
+The last part of this document describes how it is all designed.
+
 Preparations
 ============
 
@@ -11,4 +24,67 @@ To install them on Ubuntu:
 
     sudo apt install podman butane and install coreos-installer
 
+Before building, make sure you have a domain name and static IP address for the server.
+The domain name should be recognised by your internal DNS.
+
+While the IP address should be static, it is still assigned to the server using DHCP.
+
+Build
+=====
+
+Create a separate build directory. The directory where this file resides in is denoted REPODIR below.
+
+    make -f REPODIR/Makefile OPTIONS
+
+Where OPTIONS is a space separated list of KEY=VALUE. The following options are needed for the build:
+
+ADMIN_EMAIL
+
+Deploy
+======
+
+dd yadayada
+
+Design
+======
+
+The server will run uCore Linux distribution, which is a variant of CoreOs, which in turn is a variant of Fedora.
+
+CoreOS is a container centric distribution focusing on Podman. This repository uses this to create rootless
+quadlet containers, i.e. containers started using systemd with user context rather than root context.
+
+There will be two accounts pre-defined, `core` and `podman`. The `core` user account is for administration
+tasks, while `podman` is what is used when starting the rootless quadlets.
+
+Note that current implementation assumes there will be five disks, first will contain the root filesystem,
+the other four will be combined into a ZFS RAID6 device which are then split into volumes that the
+containers can use for persistent data storage.
+
+The server will run Caddy, which can be used to get public certificate for the HTTPS access using Let's Encrypt.
+This is not implemented in this repository. Instead you need to download a private, self-signed certificate
+from the web server at `https://<your server ip>/caddy/<cert file name>.crt` and tell your browser to trust
+this as a root certificate.
+
+It is possible to get a public certificate using Let's Encrypt even if the server is not accessible from
+the Internet using DNS-01 challenges. This requires an application password (token) to be assigned to
+Caddy for doing a TXT DNS record update used to prove you own the domain. This application password needs to
+be given to you by your DNS provider.
+
+The design goals were:
+
+- Using rootless Podman containers, implemented as quadlets
+- First disk used as root file system, with default setup
+- Disk 2 to 5 becomes RAID6 configuration with ZFS, where ZFS volumes are used for storing persistent data for the containers. Here setup what volumes make sense for the containers including volume options.
+- Having the following services:
+  - NextCloud
+  - PostgreSQL - to be used by NextCloud
+  - Redis - for NextCloud
+  - Caddy - as web server for NextCloud, configured for using private SSL certificate for HTTPS access
+- Caddy's SSL certificate should be downloadable from web server
+- Each week ZFS should be scrubbed and PostgreSQL database validated
+- Use the uCore recommended way for performing a rebase from CoreOS to uCore.
+- A simple mail agent used to send a notification for each bootup as well as when a systemd service fails
+- Use password for using Redis and PostgreSQL
+- Server user account for admin is core
+- Server user account used for running containers is podman
 
