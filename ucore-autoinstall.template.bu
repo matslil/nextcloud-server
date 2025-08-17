@@ -101,10 +101,10 @@ storage:
           /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/srv/pods/caddy/certs      "${POOL}/caddy/certs"       || true
 
           # Placeholders for your private cert and key (Caddy mounts these)
-          touch /srv/pods/caddy/certs/liljegren.crt
-          touch /srv/pods/caddy/certs/liljegren.key
-          chmod 0644 /srv/pods/caddy/certs/liljegren.crt
-          chmod 0600 /srv/pods/caddy/certs/liljegren.key
+          touch /srv/pods/caddy/certs/{{CERT_FILE_PUB}}
+          touch /srv/pods/caddy/certs/{{CERT_FILE_PRIV}}
+          chmod 0644 /srv/pods/caddy/certs/{{CERT_FILE_PUB}}
+          chmod 0600 /srv/pods/caddy/certs/{{CERT_FILE_PRIV}}
 
           chown -R podman:podman /srv/pods
           mkdir -p /etc/zfs && touch "${MARKER}"
@@ -124,7 +124,7 @@ storage:
             tls /data/certs/{{CERT_FILE_PUB}} /data/certs/{{CERT_FILE_PRIV}}
             encode zstd gzip
 
-            # Allow downloading the public cert at /caddy/liljegren.crt
+            # Allow downloading the public cert at /caddy/{{CERT_FILE_PUB}}
             handle_path /caddy/* {
               root * /var/www
               file_server browse
@@ -436,7 +436,7 @@ systemd:
         ExecStart=/usr/local/bin/zfs-setup
 
         # make cert downloadable
-        ExecStart=/usr/bin/install -m 0644 -o podman -g podman /srv/pods/caddy/certs/liljegren.crt /srv/pods/caddy/www/liljegren.crt
+        ExecStart=/usr/bin/install -m 0644 -o podman -g podman /srv/pods/caddy/certs/{{CERT_FILE_PUB}} /srv/pods/caddy/www/{{CERT_FILE_PUB}}
 
         # start podman user's units
         ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user daemon-reload'
