@@ -24,6 +24,13 @@ storage:
     # Enable user lingering for core (rootless systemd user services at boot)
     - path: /var/lib/systemd/linger
       mode: 0755
+
+  links:
+    # Place public certificate in a place accessible from web
+    - path /srv/pods/caddy/var/www/{{CERT_FILE_PUB}}
+      target: srv/pods/caddy/pki/authorities/local/root.crt
+      hard: false
+
   files:
     # Enable linger for 'podman' (user services at boot)
     - path: /var/lib/systemd/linger/podman
@@ -100,12 +107,6 @@ storage:
           /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/srv/pods/caddy/www        "${POOL}/caddy/www"         || true
           /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/srv/pods/caddy/certs      "${POOL}/caddy/certs"       || true
 
-          # Placeholders for your private cert and key (Caddy mounts these)
-          touch /srv/pods/caddy/certs/{{CERT_FILE_PUB}}
-          touch /srv/pods/caddy/certs/{{CERT_FILE_PRIV}}
-          chmod 0644 /srv/pods/caddy/certs/{{CERT_FILE_PUB}}
-          chmod 0600 /srv/pods/caddy/certs/{{CERT_FILE_PRIV}}
-
           chown -R podman:podman /srv/pods
           mkdir -p /etc/zfs && touch "${MARKER}"
 
@@ -121,7 +122,7 @@ storage:
 
           # HTTPS with your private cert/key mounted into /data/certs
           :443 {
-            tls /data/certs/{{CERT_FILE_PUB}} /data/certs/{{CERT_FILE_PRIV}}
+            tls internal
             encode zstd gzip
 
             # Allow downloading the public cert at /caddy/{{CERT_FILE_PUB}}
@@ -150,6 +151,7 @@ storage:
               reverse_proxy nextcloud:80
             }
           }
+
 
     # Nextcloud environment
     - path: /var/home/podman/.config/containers/nextcloud.env
