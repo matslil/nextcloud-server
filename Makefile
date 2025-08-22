@@ -1,5 +1,9 @@
 MAKEFLAGS += -Rr
 
+BOOTDISK := /dev/nvme0n1
+
+DATADISKS := /dev/nvme1n1 /dev/nvme2n1 /dev/nvme3n1 /dev/nvme4n1
+
 SRCPATH := $(abspath $(dir $(shell readlink -e $(lastword $(MAKEFILE_LIST)))))
 TMPPATH := $(abspath ./build)
 
@@ -8,19 +12,16 @@ TMPPATH := $(abspath ./build)
 .ONESHELL:
 
 vpath ucore-autoinstall.template.bu $(SRCPATH)
-vpath ucore-autoinstall.bu 
-vpath core-ssh-key $(TMPPATH)
-vpath core-login-pwd $(TMPPATH)
-vpath ucore-autoinstall.ign $(TMPPATH)
+
+# Make sure rebuild happens if Makefile is changed
+.EXTRA_PREREQS: $(MAKEFILE_LIST)
 
 ucore-minimal-auto.iso: $(TMPPATH)/ucore-autoinstall.ign $(TMPPATH)/fcos-live.iso | prerequisites
 	test -f "$@" && rm "$@"
 	coreos-installer iso customize \
-		--live-ignition $(TMPPATH)/ucore-autoinstall.ign \
 		--dest-ignition $(TMPPATH)/ucore-autoinstall.ign \
-		--dest-karg-append "coreos.inst.install_dev=/dev/std" \
-		--dest-karg-append "coreos.inst.image_url=ostree-unverified-registry:ghcr.io/ublue-os/ucore-minimal:latest" \
-		--dest-karg-append "coreos.inst.ignition_url=file:///ucore-autoinstall.ign" \
+		--live-karg-append "coreos.inst.install_dev=$(BOOTDISK)" \
+		--live-karg-append "coreos.inst.image_url=ostree-unverified-registry:ghcr.io/ublue-os/ucore-minimal:stable" \
 		-o ucore-minimal-auto.iso \
 		$(TMPPATH)/fcos-live.iso
 
@@ -28,7 +29,18 @@ $(TMPPATH)/ucore-autoinstall.ign: $(TMPPATH)/ucore-autoinstall.bu | prerequisite
 	butane --strict --output=$@ $<
 
 $(TMPPATH)/ucore-autoinstall.bu: ucore-autoinstall.template.bu $(TMPPATH)/core-ssh-key $(TMPPATH)/core-login-pwd $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd | prerequisites
-	jinja2 -D CORE_USER_SSH_PUB="$$(cat $(TMPPATH)/core-ssh-key.pub)" -D CORE_USER_PW_HASH="$$(cat $(TMPPATH)/core-login-pwd | mkpasswd --method=SHA-512 --stdin)" -D ADMIN_EMAIL="$(ADMIN_EMAIL)" -D GMAIL_APP_PW="$(GMAIL_APP_PW)" -D CERT_FILE_PUB="$(CERT_FILE_PUB)" -D NEXTCLOUD_ADMIN_PW="$$(cat $(TMPPATH)/nextcloud-admin-pwd)" -D NEXTCLOUD_TRUSTED_DOMAIN="$(NEXTCLOUD_TRUSTED_DOMAIN)" -D POSTGRESQL_PW="$$(cat $(TMPPATH)/postgresql-pwd)" -D REDIS_PW="$$(cat $(TMPPATH)/redis-pwd)" --outfile "$@" "$<"
+	jinja2 \
+	-D CORE_USER_SSH_PUB="$$(cat $(TMPPATH)/core-ssh-key.pub)" \
+	-D CORE_USER_PW_HASH="$$(cat $(TMPPATH)/core-login-pwd | mkpasswd --method=SHA-512 --stdin)" \
+	-D ADMIN_EMAIL="$(ADMIN_EMAIL)" \
+	-D GMAIL_APP_PW="$(GMAIL_APP_PW)" \
+	-D CERT_FILE_PUB="$(CERT_FILE_PUB)" \
+	-D NEXTCLOUD_ADMIN_PW="$$(cat $(TMPPATH)/nextcloud-admin-pwd)" \
+	-D NEXTCLOUD_TRUSTED_DOMAIN="$(NEXTCLOUD_TRUSTED_DOMAIN)" \
+	-D POSTGRESQL_PW="$$(cat $(TMPPATH)/postgresql-pwd)" \
+	-D REDIS_PW="$$(cat $(TMPPATH)/redis-pwd)" \
+	-D DATADISKS="$(DATADISKS)" \
+	--outfile "$@" "$<"
 
 $(TMPPATH)/core-login-pwd $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd:
 	join_by () { local IFS="$$1"; shift; echo "$$*"; }

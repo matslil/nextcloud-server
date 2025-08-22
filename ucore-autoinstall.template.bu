@@ -69,7 +69,7 @@ storage:
           MARKER=/etc/zfs/.${POOL}_created
 
           # Adjust these if your "disk 2–5" aren't /dev/sdb–/dev/sde
-          DISKS=(/dev/sdb /dev/sdc /dev/sdd /dev/sde)
+          DISKS=({{DATADISKS}})
 
           id podman >/dev/null 2>&1 || useradd -m -d /var/home/podman podman || true
 
@@ -368,29 +368,7 @@ systemd:
     # These services only run once.
     #
 
-    # Run on first boot, rebases from CoreOS to unsigned uCore distro
-    - name: ucore-unsigned-autorebase.service
-      enabled: true
-      contents: |
-        [Unit]
-        Description=uCore autorebase to unsigned OCI and reboot
-        ConditionPathExists=!/etc/ucore-autorebase/unverified
-        ConditionPathExists=!/etc/ucore-autorebase/signed
-        After=network-online.target
-        Wants=network-online.target
-
-        [Service]
-        Type=oneshot
-        StandardOutput=journal+console
-        ExecStart=/usr/bin/rpm-ostree rebase --bypass-driver ostree-unverified-registry:ghcr.io/ublue-os/ucore-minimal:stable
-        ExecStart=/usr/bin/touch /etc/ucore-autorebase/unverified
-        ExecStart=/usr/bin/systemctl disable ucore-unsigned-autorebase.service
-        ExecStart=/usr/bin/systemctl reboot
-
-        [Install]
-        WantedBy=multi-user.target
-
-    # Run on second boot, rebase from unsigned uCore to signed uCore distro
+    # Run on first boot, rebase from unsigned uCore to signed uCore distro
     - name: ucore-signed-autorebase.service
       enabled: true
       contents: |
@@ -412,7 +390,7 @@ systemd:
         [Install]
         WantedBy=multi-user.target
 
-    # Run on third boot, enable firewall services, ZFS pool/datasets, start containers, timers
+    # Run on second boot, enable firewall services, ZFS pool/datasets, start containers, timers
     - name: post-setup.service
       enabled: true
       contents: |
