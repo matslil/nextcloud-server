@@ -19,10 +19,9 @@ ucore-minimal-auto.iso: $(TMPPATH)/setup-server.ign $(TMPPATH)/setup-installer.i
 		--live-ignition $(TMPPATH)/setup-installer.ign \
 		--dest-ignition $(TMPPATH)/setup-server.ign \
 		--live-karg-append "coreos.inst.install_dev=$(BOOTDISK)" \
-		--live-karg-append "coreos.inst.image_url=ostree-unverified-registry:ghcr.io/ublue-os/ucore-minimal:stable" \
 		--live-karg-append "systemd.debug-shell" \
 		--live-karg-append "pci=realloc" \
-		--destg-karg-append "pci=realloc" \
+		--dest-karg-append "pci=realloc" \
 		-o ucore-minimal-auto.iso \
 		$(TMPPATH)/fcos-live.iso
 
