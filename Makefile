@@ -11,7 +11,7 @@ TMPPATH := $(abspath ./build)
 
 .ONESHELL:
 
-vpath %.template $(SRCPATH)
+vpath %.template.bu $(SRCPATH)
 
 ucore-minimal-auto.iso: $(TMPPATH)/setup-server.ign $(TMPPATH)/setup-installer.ign $(TMPPATH)/fcos-live.iso $(MAKEFILE_LIST) | prerequisites
 	test -f "$@" && rm "$@"
@@ -28,7 +28,7 @@ ucore-minimal-auto.iso: $(TMPPATH)/setup-server.ign $(TMPPATH)/setup-installer.i
 $(TMPPATH)/%.ign: $(TMPPATH)/%.bu $(MAKEFILE_LIST) | prerequisites
 	butane --strict --output=$@ $<
 
-$(TMPPATH)/setup-server.bu: setup-server.template $(TMPPATH)/core-ssh-key $(TMPPATH)/core-login-pwd $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd $(MAKEFILE_LIST) | prerequisites
+$(TMPPATH)/setup-server.bu: setup-server.template.bu $(TMPPATH)/core-ssh-key $(TMPPATH)/core-login-pwd $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd $(MAKEFILE_LIST) | prerequisites
 	jinja2 \
 	-D CORE_USER_SSH_PUB="$$(cat $(TMPPATH)/core-ssh-key.pub)" \
 	-D CORE_USER_PW_HASH="$$(cat $(TMPPATH)/core-login-pwd | mkpasswd --method=SHA-512 --stdin)" \
@@ -42,7 +42,7 @@ $(TMPPATH)/setup-server.bu: setup-server.template $(TMPPATH)/core-ssh-key $(TMPP
 	-D DATADISKS="$(DATADISKS)" \
 	--outfile "$@" "$<"
 
-$(TMPPATH)/setup-installer.bu: setup-installer.template $(TMPPATH)/core-ssh-key $(TMPPATH)/core-login-pwd $(MAKEFILE_LIST) | prerequisites
+$(TMPPATH)/setup-installer.bu: setup-installer.template.bu $(TMPPATH)/core-ssh-key $(TMPPATH)/core-login-pwd $(MAKEFILE_LIST) | prerequisites
 	jinja2 \
 	-D CORE_USER_SSH_PUB="$$(cat $(TMPPATH)/core-ssh-key.pub)" \
 	-D CORE_USER_PW_HASH="$$(cat $(TMPPATH)/core-login-pwd | mkpasswd --method=SHA-512 --stdin)" \
