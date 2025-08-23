@@ -1,0 +1,19 @@
+# Jinja template to create a butane file for coreos-installer
+# This is the configuration defining runtime environment for the installer
+
+variant: fcos
+version: 1.5.0
+
+passwd:
+  users:
+    - name: core
+      groups: [ wheel ]
+      ssh_authorized_keys:
+        - {{CORE_USER_SSH_PUB}}
+      password_hash: {{CORE_USER_PW_HASH}}
+
+systemd:
+  units:
+    - name: getty@tty2.service
+      enabled: true
+

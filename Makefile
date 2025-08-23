@@ -11,24 +11,25 @@ TMPPATH := $(abspath ./build)
 
 .ONESHELL:
 
-vpath ucore-autoinstall.template.bu $(SRCPATH)
+vpath %.template $(SRCPATH)
 
-# Make sure rebuild happens if Makefile is changed
-.EXTRA_PREREQS: $(MAKEFILE_LIST)
-
-ucore-minimal-auto.iso: $(TMPPATH)/ucore-autoinstall.ign $(TMPPATH)/fcos-live.iso | prerequisites
+ucore-minimal-auto.iso: $(TMPPATH)/setup-server.ign $(TMPPATH)/setup-installer.ign $(TMPPATH)/fcos-live.iso $(MAKEFILE_LIST) | prerequisites
 	test -f "$@" && rm "$@"
 	coreos-installer iso customize \
-		--dest-ignition $(TMPPATH)/ucore-autoinstall.ign \
+		--live-ignition $(TMPPATH)/setup-installer.ign \
+		--dest-ignition $(TMPPATH)/setup-server.ign \
 		--live-karg-append "coreos.inst.install_dev=$(BOOTDISK)" \
 		--live-karg-append "coreos.inst.image_url=ostree-unverified-registry:ghcr.io/ublue-os/ucore-minimal:stable" \
+		--live-karg-append "systemd.debug-shell" \
+		--live-karg-append "pci=realloc" \
+		--destg-karg-append "pci=realloc" \
 		-o ucore-minimal-auto.iso \
 		$(TMPPATH)/fcos-live.iso
 
-$(TMPPATH)/ucore-autoinstall.ign: $(TMPPATH)/ucore-autoinstall.bu | prerequisites
+$(TMPPATH)/%.ign: $(TMPPATH)/%.bu $(MAKEFILE_LIST) | prerequisites
 	butane --strict --output=$@ $<
 
-$(TMPPATH)/ucore-autoinstall.bu: ucore-autoinstall.template.bu $(TMPPATH)/core-ssh-key $(TMPPATH)/core-login-pwd $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd | prerequisites
+$(TMPPATH)/setup-server.bu: setup-server.template $(TMPPATH)/core-ssh-key $(TMPPATH)/core-login-pwd $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd $(MAKEFILE_LIST) | prerequisites
 	jinja2 \
 	-D CORE_USER_SSH_PUB="$$(cat $(TMPPATH)/core-ssh-key.pub)" \
 	-D CORE_USER_PW_HASH="$$(cat $(TMPPATH)/core-login-pwd | mkpasswd --method=SHA-512 --stdin)" \
@@ -42,11 +43,18 @@ $(TMPPATH)/ucore-autoinstall.bu: ucore-autoinstall.template.bu $(TMPPATH)/core-s
 	-D DATADISKS="$(DATADISKS)" \
 	--outfile "$@" "$<"
 
-$(TMPPATH)/core-login-pwd $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd:
+$(TMPPATH)/setup-installer.bu: setup-installer.template $(TMPPATH)/core-ssh-key $(TMPPATH)/core-login-pwd $(MAKEFILE_LIST) | prerequisites
+	jinja2 \
+	-D CORE_USER_SSH_PUB="$$(cat $(TMPPATH)/core-ssh-key.pub)" \
+	-D CORE_USER_PW_HASH="$$(cat $(TMPPATH)/core-login-pwd | mkpasswd --method=SHA-512 --stdin)" \
+	-D DATADISKS="$(DATADISKS)" \
+	--outfile "$@" "$<"
+
+$(TMPPATH)/core-login-pwd $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd: $(MAKEFILE_LIST)
 	join_by () { local IFS="$$1"; shift; echo "$$*"; }
 	join_by '-' $$(shuf -n4 /usr/share/dict/words) > $@
 
-$(TMPPATH)/core-ssh-key: | prerequisites
+$(TMPPATH)/core-ssh-key: $(MAKEFILE_LIST) | prerequisites
 	test -f "$@" && rm "$@"
 	ssh-keygen -q -t ed25519 -f "$@" -N "" -C "NextCloud core user key"
 
