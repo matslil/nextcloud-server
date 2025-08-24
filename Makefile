@@ -4,6 +4,8 @@ BOOTDISK := /dev/nvme0n1
 
 DATADISKS := /dev/nvme1n1 /dev/nvme2n1 /dev/nvme3n1 /dev/nvme4n1
 
+KEYBOARD ?= $(shell localectl status | awk -F: '/Layout/ {print $2}' | xargs)
+
 SRCPATH := $(abspath $(dir $(shell readlink -e $(lastword $(MAKEFILE_LIST)))))
 TMPPATH := $(abspath ./build)
 
@@ -20,6 +22,8 @@ ucore-minimal-auto.iso: $(TMPPATH)/setup-server.ign $(TMPPATH)/setup-installer.i
 		--dest-ignition $(TMPPATH)/setup-server.ign \
 		--live-karg-append "coreos.inst.install_dev=$(BOOTDISK)" \
 		--live-karg-append "systemd.debug-shell" \
+		--live-karg-append "rd.kbd.keymap=$(KEYBOARD)" \
+		--dest-karg-append "rd.kbd.keymap=$(KEYBOARD)" \
 		--live-karg-append "pci=realloc" \
 		--dest-karg-append "pci=realloc" \
 		-o ucore-minimal-auto.iso \
@@ -34,7 +38,6 @@ $(TMPPATH)/setup-server.bu: setup-server.template.bu $(TMPPATH)/core-ssh-key $(T
 	-D CORE_USER_PW_HASH="$$(cat $(TMPPATH)/core-login-pwd | mkpasswd --method=SHA-512 --stdin)" \
 	-D ADMIN_EMAIL="$(ADMIN_EMAIL)" \
 	-D GMAIL_APP_PW="$(GMAIL_APP_PW)" \
-	-D CERT_FILE_PUB="$(CERT_FILE_PUB)" \
 	-D NEXTCLOUD_ADMIN_PW="$$(cat $(TMPPATH)/nextcloud-admin-pwd)" \
 	-D NEXTCLOUD_TRUSTED_DOMAIN="$(NEXTCLOUD_TRUSTED_DOMAIN)" \
 	-D POSTGRESQL_PW="$$(cat $(TMPPATH)/postgresql-pwd)" \
@@ -65,9 +68,9 @@ prerequisites:
 	check_cmds () { for cmd in "$$@"; do command -v $$cmd >/dev/null || { echo "$$cmd: Command not installed"; exit 1; }; done }
 	check_cmds butane coreos-installer jq ssh-keygen curl
 	[[ -n "$(ADMIN_EMAIL)" ]] || { echo "ADMIN_EMAIL: Variable not set"; exit 1; }
-	[[ -n "$(CERT_FILE_PUB)" ]] || { echo "CERT_FILE_PUB: Variable not set"; exit 1; }
 	[[ -n "$(NEXTCLOUD_TRUSTED_DOMAIN)" ]] || { echo "NEXTCLOUD_TRUSTED_DOMAIN: Variable not set"; exit 1; }
-	[[ -n "$(GMAIL_APP_PW)" ]] || { echo "GMAIL_APP_PW: Variable not set"; exit1; }
+	[[ -n "$(GMAIL_APP_PW)" ]] || { echo "GMAIL_APP_PW: Variable not set"; exit 1; }
+	[[ -n "$(KEYBOARD)" ]] || { echo "KEYBOARD: Variable not set"; exit 1; }
 
 	mkdir -p "$(TMPPATH)"
 

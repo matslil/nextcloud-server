@@ -16,4 +16,19 @@ systemd:
   units:
     - name: getty@tty2.service
       enabled: true
+    - name: keymap.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Set keyboard layout
+        DefaultDependencies=no
+        Conflicts=shutdown.target
+        Before=sysinit.target shutdown.target
+        After=local-fs.target
 
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/bin/loadkeys {{KEYBOARD}}
+
+        [Install]
+        WantedBy=sysinit.target

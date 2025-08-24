@@ -27,7 +27,7 @@ storage:
 
   links:
     # Place public certificate in a place accessible from web
-    - path: /srv/pods/caddy/var/www/{{CERT_FILE_PUB}}
+    - path: /var/pods/caddy/var/www/nextcloud.crt
       target: srv/pods/caddy/pki/authorities/local/root.crt
       hard: false
 
@@ -68,10 +68,7 @@ storage:
           POOL=data
           MARKER=/etc/zfs/.${POOL}_created
 
-          # Adjust these if your "disk 2–5" aren't /dev/sdb–/dev/sde
           DISKS=({{DATADISKS}})
-
-          id podman >/dev/null 2>&1 || useradd -m -d /var/home/podman podman || true
 
           if [[ -e "${MARKER}" ]]; then exit 0; fi
 
@@ -81,10 +78,13 @@ storage:
             /usr/bin/udevadm settle --exit-if-exists="$d" || true
           done
 
-          # Create raidz2 (RAID6-equivalent) pool
+          # Create raidz2 (RAID6-equivalent) pool, if not existing already
+          # If it exists, script will assume it has been auto-mounted
+          # Setting mountpoint to "none" for root dataset. This makes
+          # child datasets independent, i.e. snapshots of child datasets
+          # can be done independently.
           if ! /usr/sbin/zpool list "${POOL}" >/dev/null 2>&1; then
-            /usr/sbin/zpool create -f -o ashift=12 \
-              "${POOL}" raidz2 "${DISKS[@]}"
+            /usr/sbin/zpool create -m none -f -o ashift=12 "${POOL}" raidz2 "${DISKS[@]}"
           fi
 
           # Base properties common to most datasets
@@ -92,26 +92,26 @@ storage:
 
           # Create datasets with sensible options
           # Nextcloud app data (webroot + data dir)
-          /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/srv/pods/nextcloud         "${POOL}/nextcloud"        || true
+          /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/var/pods/nextcloud         "${POOL}/nextcloud"        || true
 
           # PostgreSQL data (8K records to match PG page size)
-          /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/srv/pods/postgres \
+          /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/var/pods/postgres \
               -o recordsize=8K -o logbias=throughput "${POOL}/postgres"                 || true
 
           # Redis data (small records)
-          /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/srv/pods/redis \
+          /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/var/pods/redis \
               -o recordsize=4K "${POOL}/redis"                                          || true
 
           # Caddy config + sites + certs
-          /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/srv/pods/caddy            "${POOL}/caddy"             || true
-          /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/srv/pods/caddy/www        "${POOL}/caddy/www"         || true
-          /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/srv/pods/caddy/certs      "${POOL}/caddy/certs"       || true
+          /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/var/pods/caddy            "${POOL}/caddy"             || true
+          /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/var/pods/caddy/www        "${POOL}/caddy/www"         || true
+          /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/var/pods/caddy/certs      "${POOL}/caddy/certs"       || true
 
-          chown -R podman:podman /srv/pods
+          chown -R podman:podman /var/pods
           mkdir -p /etc/zfs && touch "${MARKER}"
 
     # Caddyfile served from ZFS dataset (reverse proxy to Nextcloud + static cert download)
-    - path: /srv/pods/caddy/Caddyfile
+    - path: /var/pods/caddy/Caddyfile
       mode: 0644
       contents:
         inline: |
@@ -125,7 +125,7 @@ storage:
             tls internal
             encode zstd gzip
 
-            # Allow downloading the public cert at /caddy/{{CERT_FILE_PUB}}
+            # Allow downloading the public cert at /caddy/nextcloud.crt
             handle_path /caddy/* {
               root * /var/www
               file_server browse
@@ -217,12 +217,11 @@ storage:
           OnFailure=mail-notify@%n.service
 
           [Container]
-          Image=postgres:16
-          Name=postgres
+          Image=docker.io/library/postgres:16
           Network=nextcloudnet
           EnvironmentFile=%h/.config/containers/postgres.env
           # Persist to ZFS dataset
-          Volume=/srv/pods/postgres:/var/lib/postgresql/data:Z
+          Volume=/var/pods/postgres:/var/lib/postgresql/data:Z
           # Healthcheck
           HealthCmd=CMD-SHELL pg_isready -U $$POSTGRES_USER || exit 1
           HealthInterval=30s
@@ -249,11 +248,10 @@ storage:
           OnFailure=mail-notify@%n.service
 
           [Container]
-          Image=redis:7
-          Name=redis
+          Image=docker.io/library/redis:7
           Network=nextcloudnet
           EnvironmentFile=%h/.config/containers/redis.env
-          Volume=/srv/pods/redis:/data:Z
+          Volume=/var/pods/redis:/data:Z
           Arg=--appendonly yes
           Arg=--requirepass $${REDIS_PASSWORD}
 
@@ -277,12 +275,11 @@ storage:
           OnFailure=mail-notify@%n.service
 
           [Container]
-          Image=nextcloud:29-apache
-          Name=nextcloud
+          Image=docker.io/library/nextcloud:29-apache
           Network=nextcloudnet
           EnvironmentFile=%h/.config/containers/nextcloud.env
           # Persist Nextcloud data to ZFS
-          Volume=/srv/pods/nextcloud:/var/www/html:Z
+          Volume=/var/pods/nextcloud:/var/www/html:Z
 
           # Let Nextcloud know the proxied protocol
           Env=APACHE_DISABLE_REWRITE_IP=1
@@ -307,15 +304,14 @@ storage:
           OnFailure=mail-notify@%n.service
 
           [Container]
-          Image=caddy:2
-          Name=caddy
+          Image=docker.io/library/caddy:2
           Network=nextcloudnet
           # Map ports 80/443 (rootlesskit handles privileged ports)
           PublishPort=80:80
           PublishPort=443:443
-          Volume=/srv/pods/caddy/Caddyfile:/etc/caddy/Caddyfile:Z
-          Volume=/srv/pods/caddy/www:/var/www:Z
-          Volume=/srv/pods/caddy/certs:/data/certs:Z
+          Volume=/var/pods/caddy/Caddyfile:/etc/caddy/Caddyfile:Z
+          Volume=/var/pods/caddy/www:/var/www:Z
+          Volume=/var/pods/caddy/certs:/data/certs:Z
 
           [Service]
           Restart=always
@@ -337,7 +333,7 @@ storage:
           [Service]
           Type=oneshot
           # Run pg_amcheck inside the postgres container
-          ExecStart=/usr/bin/podman exec -u postgres postgres pg_amcheck -S -j 2 -d nextcloud
+          ExecStart="/usr/bin/podman exec -u postgres postgres pg_amcheck -S -j 2 -d nextcloud"
 
     - path: /var/home/podman/.config/systemd/user/pg-amcheck.timer
       mode: 0644
@@ -390,7 +386,8 @@ systemd:
         [Install]
         WantedBy=multi-user.target
 
-    # Run on first boot, rebase from unsigned uCore to signed uCore distro
+    # Run on second boot, rebase from unsigned uCore to signed uCore distro
+    # Also install any needed extra packages
     - name: ucore-signed-autorebase.service
       enabled: true
       contents: |
@@ -405,6 +402,7 @@ systemd:
         Type=oneshot
         StandardOutput=journal+console
         ExecStart=/usr/bin/rpm-ostree rebase --bypass-driver ostree-image-signed:docker://ghcr.io/ublue-os/ucore-minimal:stable
+        ExecStart=/usr/bin/rpm-ostree install -y --allow-inactive msmtp
         ExecStart=/usr/bin/touch /etc/ucore-autorebase/signed
         ExecStart=/usr/bin/systemctl disable ucore-signed-autorebase.service
         ExecStart=/usr/bin/systemctl reboot
@@ -412,7 +410,7 @@ systemd:
         [Install]
         WantedBy=multi-user.target
 
-    # Run on second boot, enable firewall services, ZFS pool/datasets, start containers, timers
+    # Run on third boot, enable firewall services, ZFS pool/datasets, start containers, timers
     - name: post-setup.service
       enabled: true
       contents: |
@@ -438,13 +436,13 @@ systemd:
         ExecStart=/usr/local/bin/zfs-setup
 
         # make cert downloadable
-        ExecStart=/usr/bin/install -m 0644 -o podman -g podman /srv/pods/caddy/certs/{{CERT_FILE_PUB}} /srv/pods/caddy/www/{{CERT_FILE_PUB}}
+        ExecStart=/usr/bin/install -m 0644 -o podman -g podman /var/pods/caddy/certs/nextcloud.crt /var/pods/caddy/www/nextcloud.crt
 
         # start podman user's units
         ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user daemon-reload'
         ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user enable --now nextcloud.network'
         ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user enable --now postgres.service redis.service nextcloud.service caddy.service'
-        ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user enable --now pg-amcheck.timer
+        ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user enable --now pg-amcheck.timer'
 
         # enable user timers (failure notify is implicit via OnFailure on each)
         ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user daemon-reload'
