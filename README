@@ -87,4 +87,6 @@ The design goals were:
 - Use password for using Redis and PostgreSQL
 - Server user account for admin is core
 - Server user account used for running containers is podman
+- Root device is auto-crypted using TPM hardware
+- ZFS datasets are crypted using key file in root filesystem, also available from the build for recovery purpose.
 

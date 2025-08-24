@@ -3,6 +3,10 @@
 variant: fcos
 version: 1.5.0
 
+boot_device:
+  luks:
+    tpm2: true
+
 passwd:
   users:
     - name: core
@@ -32,6 +36,13 @@ storage:
       hard: false
 
   files:
+    # Decryption key for ZFS datasets
+    - path: /var/zfs/zfs-dataset-key
+      mode: 0600
+      overwrite: true
+      contents:
+        source: "data:;base64,{{ZFS_DATASET_KEY_B64}}"
+
     # Enable linger for 'podman' (user services at boot)
     - path: /var/lib/systemd/linger/podman
       mode: 0644
@@ -88,7 +99,7 @@ storage:
           fi
 
           # Base properties common to most datasets
-          COMMON_OPTS="-o compression=lz4 -o atime=off -o xattr=sa -o acltype=posixacl"
+          COMMON_OPTS="-o encryption=aes-256-gcm -o keyformat=raw -o keylocation=file:///var/zfs/zfs-dataset-key -o compression=lz4 -o atime=off -o xattr=sa -o acltype=posixacl"
 
           # Create datasets with sensible options
           # Nextcloud app data (webroot + data dir)
