@@ -1,9 +1,5 @@
 MAKEFLAGS += -Rr
 
-BOOTDISK := /dev/nvme0n1
-
-DATADISKS := /dev/nvme1n1 /dev/nvme2n1 /dev/nvme3n1 /dev/nvme4n1
-
 KEYBOARD ?= $(shell localectl status | awk -F: '/Layout/ {print $2}' | xargs)
 
 SRCPATH := $(abspath $(dir $(shell readlink -e $(lastword $(MAKEFILE_LIST)))))
@@ -14,6 +10,46 @@ TMPPATH := $(abspath ./build)
 .ONESHELL:
 
 vpath %.template.bu $(SRCPATH)
+
+# check_envs ADMIN_EMAIL NEXTCLOUD_TRUSTED_DOMAIN GMAIL_APP_PW BOOTDISK DATADISKS
+.PHONY: help
+help:
+	@cat <<-EOF
+	Builds an ISO image that will deploy NexusCloud to machine booting it.
+	 
+	Syntax:
+	   make iso -f <reporoot>/Makefile ADMIN_EMAIL=<admin email> GMAIL_APP_PW=<GMail app pw> NEXTCLOUD_TRUST_DOMAIN=<host/ip> BOOTDISK=<disk> DATADISKS="<disk1> <disk2> ..."
+	 
+	Variables:
+	   ADMIN_EMAIL   E-mail associated with GMAIL_APP_PW, where notifications will be sent
+	   GMAIL_APP_PW  Application password given to the GMail account ADMIN_EMAIL
+	   NEXTCLOUD_TRUST_DOMAIN  Domain name or IP address of the server to be deployed.
+	   BOOTDISK      Name of boot disk, i.e. disk with root filesystem, e.g. "/dev/nvme1n1" for first NVME disk.
+	   DATADISKS     Name of disks for data storage, separated by space, e.g. "/dev/nvme2n1 /dev/nvme3n1 /dev/nvme4n1" for four NVME disks starting with the second. Used to build a RAID-6 ZFS data storage.
+	 
+	Files created:
+	   BUILD         Directory with intermediate build files, only useful to speed up builds
+	   ucore-minimal-auto.iso  ISO image to be written to USB stick.
+	   core-login-pwd          Password for logging in into "core" admin account.
+	   core-ssh-key            SSH private key for logging in into "core" admin account.
+	   core-ssh-key.pub        SSH public key associated with core-ssh-key
+	   zfs-dataset-key         Key used by ZFS when encrypting datasets. All datasets use the same key.
+	EOF
+
+.PHONY: iso
+iso: ucore-minimal-auto.iso
+	@cat <<-EOF
+	 
+	==== Build successfull ====
+	 
+	Write ISO image to a disk. First check that the disk is the one you intended:
+	 
+	    udevadm info <disk>
+	 
+	Then write image to disk:
+	 
+	    sudo dd if=./ucore-minimal-auto.iso of=<disk> bs=4096k
+	EOF
 
 ucore-minimal-auto.iso: $(TMPPATH)/setup-server.ign $(TMPPATH)/setup-installer.ign $(TMPPATH)/fcos-live.iso $(MAKEFILE_LIST) | prerequisites
 	test -f "$@" && rm "$@"
@@ -32,10 +68,10 @@ ucore-minimal-auto.iso: $(TMPPATH)/setup-server.ign $(TMPPATH)/setup-installer.i
 $(TMPPATH)/%.ign: $(TMPPATH)/%.bu $(MAKEFILE_LIST) | prerequisites
 	butane --strict --output=$@ $<
 
-$(TMPPATH)/setup-server.bu: setup-server.template.bu $(TMPPATH)/core-ssh-key $(TMPPATH)/core-login-pwd $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd $(MAKEFILE_LIST) | prerequisites
+$(TMPPATH)/setup-server.bu: setup-server.template.bu core-ssh-key core-login-pwd $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd $(MAKEFILE_LIST) | prerequisites
 	jinja2 \
-	-D CORE_USER_SSH_PUB="$$(cat $(TMPPATH)/core-ssh-key.pub)" \
-	-D CORE_USER_PW_HASH="$$(cat $(TMPPATH)/core-login-pwd | mkpasswd --method=SHA-512 --stdin)" \
+	-D CORE_USER_SSH_PUB="$$(cat core-ssh-key.pub)" \
+	-D CORE_USER_PW_HASH="$$(cat core-login-pwd | mkpasswd --method=SHA-512 --stdin)" \
 	-D ADMIN_EMAIL="$(ADMIN_EMAIL)" \
 	-D GMAIL_APP_PW="$(GMAIL_APP_PW)" \
 	-D NEXTCLOUD_ADMIN_PW="$$(cat $(TMPPATH)/nextcloud-admin-pwd)" \
@@ -45,18 +81,18 @@ $(TMPPATH)/setup-server.bu: setup-server.template.bu $(TMPPATH)/core-ssh-key $(T
 	-D DATADISKS="$(DATADISKS)" \
 	--outfile "$@" "$<"
 
-$(TMPPATH)/setup-installer.bu: setup-installer.template.bu $(TMPPATH)/core-ssh-key $(TMPPATH)/core-login-pwd $(MAKEFILE_LIST) | prerequisites
+$(TMPPATH)/setup-installer.bu: setup-installer.template.bu core-ssh-key core-login-pwd $(MAKEFILE_LIST) | prerequisites
 	jinja2 \
-	-D CORE_USER_SSH_PUB="$$(cat $(TMPPATH)/core-ssh-key.pub)" \
-	-D CORE_USER_PW_HASH="$$(cat $(TMPPATH)/core-login-pwd | mkpasswd --method=SHA-512 --stdin)" \
+	-D CORE_USER_SSH_PUB="$$(cat core-ssh-key.pub)" \
+	-D CORE_USER_PW_HASH="$$(cat core-login-pwd | mkpasswd --method=SHA-512 --stdin)" \
 	-D DATADISKS="$(DATADISKS)" \
 	--outfile "$@" "$<"
 
-$(TMPPATH)/core-login-pwd $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd: $(MAKEFILE_LIST)
+core-login-pwd $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd: $(MAKEFILE_LIST)
 	join_by () { local IFS="$$1"; shift; echo "$$*"; }
 	join_by '-' $$(shuf -n4 /usr/share/dict/words) > $@
 
-$(TMPPATH)/core-ssh-key: $(MAKEFILE_LIST) | prerequisites
+core-ssh-key core-ssh-key.pub: $(MAKEFILE_LIST) | prerequisites
 	test -f "$@" && rm "$@"
 	ssh-keygen -q -t ed25519 -f "$@" -N "" -C "NextCloud core user key"
 
@@ -64,13 +100,12 @@ $(TMPPATH)/fcos-live.iso: | prerequisites
 	ISO_URL=$$(curl -s "https://builds.coreos.fedoraproject.org/streams/stable.json" | jq -r '.architectures.x86_64.artifacts.metal.formats.iso.disk.location')
 	curl -L -o "$@" "$${ISO_URL}"
 
-prerequisites:
-	check_cmds () { for cmd in "$$@"; do command -v $$cmd >/dev/null || { echo "$$cmd: Command not installed"; exit 1; }; done }
+prerequisites: $(TMPPATH)
+	@check_cmds () { for cmd in "$$@"; do command -v $$cmd >/dev/null || { echo "$$cmd: Command not installed"; exit 1; }; done }
 	check_cmds butane coreos-installer jq ssh-keygen curl
-	[[ -n "$(ADMIN_EMAIL)" ]] || { echo "ADMIN_EMAIL: Variable not set"; exit 1; }
-	[[ -n "$(NEXTCLOUD_TRUSTED_DOMAIN)" ]] || { echo "NEXTCLOUD_TRUSTED_DOMAIN: Variable not set"; exit 1; }
-	[[ -n "$(GMAIL_APP_PW)" ]] || { echo "GMAIL_APP_PW: Variable not set"; exit 1; }
-	[[ -n "$(KEYBOARD)" ]] || { echo "KEYBOARD: Variable not set"; exit 1; }
+	check_envs () { for env in "$$@"; do [[ -n "$${!env}" ]] || { echo "$$env: Variable not set"; exit 1; }; done }
+	check_envs ADMIN_EMAIL NEXTCLOUD_TRUSTED_DOMAIN GMAIL_APP_PW BOOTDISK DATADISKS
 
+$(TMPPATH):
 	mkdir -p "$(TMPPATH)"
 
