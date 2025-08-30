@@ -1,5 +1,29 @@
-# uCore minimal host with rootless Podman + ZFS (raidz2) + Nextcloud stack via Quadlet
-# Transpile with: butane --strict --pretty -d . -o ucore.ign thisfile.bu
+# This is the uCore butane template file for a NextCloud server.
+# It will be run through jinja2 expanding the following macros:
+#     CORE_USER_SSH_PUB        - SSH public key for core admin account
+#     CORE_USER_PW_HASH        - Hash of password for core admin account 
+#     ZFS_DATASET_KEY_B64      - Base64 encoded encryption key shared by all ZFS datasets
+#     ADMIN_EMAIL              - E-mail address for administrator, sent from account
+#                                associated with GMAIL_APP_PW
+#     GMAIL_APP_PW             - Application password configured for GMail account, used
+#                                by ADMIN_EMAIL
+#     DATADISKS                - Space separated list of device paths to be included into
+#                                ZFS RAID-6 (ZRAID2) root dataset, which is then used
+#                                by all other datasets setup for the quadlets
+#     POSTGRESQL_PW            . Password used by NextCloud when storing its data in the
+#                                PostgreSQL database
+#     NEXTCLOUD_ADMIN_PW       - Password for administering NextCloud
+#     REDIS_PW                 - Password used by NextCloud for Redis access
+#     NEXTCLOUD_TRUSTED_DOMAIN - IP-address or hostname associated with NextCloud
+#
+# The following quadlets are being setup:
+#     NextCloud    - Implements the main functionality
+#     Redis        - ??
+#     PostgreSQL   - Database for NextCloud meta-data storage
+#     Caddy        - HTTP/HTTPS proxy for NextCloud, currently only support internal
+#                    SSL certificate which can be downloaded at
+#                    https://<NEXTCLOUD_TRUSTED_DOMAIN>/caddy/nextcloud.pem
+
 variant: fcos
 version: 1.5.0
 
@@ -66,7 +90,7 @@ storage:
           port           587
           from           {{ADMIN_EMAIL}}
           user           {{ADMIN_EMAIL}}
-          password       {GMAIL_APP_PW}}
+          password       {{GMAIL_APP_PW}}
           account default : gmail
 
     # ZFS setup script (creates pool/datasets on first boot after rebase)
