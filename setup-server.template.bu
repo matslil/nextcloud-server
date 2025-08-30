@@ -179,6 +179,7 @@ storage:
           REDIS_HOST=redis
           REDIS_HOST_PASSWORD={{REDIS_PW}}
           NEXTCLOUD_TRUSTED_DOMAINS={{NEXTCLOUD_TRUSTED_DOMAIN}}
+          APACHE_DISABLE_REWRITE_IP=1
 
     # Postgres environment
     - path: /var/home/podman/.config/containers/postgres.env
@@ -211,7 +212,6 @@ storage:
           Description=User network for Nextcloud stack
 
           [Network]
-          Name=nextcloudnet
           Driver=bridge
 
     # PostgreSQL quadlet: Store NextCloud meta-data
@@ -229,7 +229,7 @@ storage:
 
           [Container]
           Image=docker.io/library/postgres:16
-          Network=nextcloudnet
+          Network=nextcloud
           EnvironmentFile=%h/.config/containers/postgres.env
           # Persist to ZFS dataset
           Volume=/var/pods/postgres:/var/lib/postgresql/data:Z
@@ -260,11 +260,14 @@ storage:
 
           [Container]
           Image=docker.io/library/redis:7
-          Network=nextcloudnet
+          Network=nextcloud
           EnvironmentFile=%h/.config/containers/redis.env
           Volume=/var/pods/redis:/data:Z
-          Arg=--appendonly yes
-          Arg=--requirepass $${REDIS_PASSWORD}
+          # Arguments
+          --appendonly
+          yes
+          --requirepass
+          $${REDIS_PASSWORD}
 
           [Service]
           Restart=always
@@ -287,13 +290,10 @@ storage:
 
           [Container]
           Image=docker.io/library/nextcloud:29-apache
-          Network=nextcloudnet
+          Network=nextcloud
           EnvironmentFile=%h/.config/containers/nextcloud.env
           # Persist Nextcloud data to ZFS
           Volume=/var/pods/nextcloud:/var/www/html:Z
-
-          # Let Nextcloud know the proxied protocol
-          Env=APACHE_DISABLE_REWRITE_IP=1
 
           [Service]
           Restart=always
@@ -316,7 +316,7 @@ storage:
 
           [Container]
           Image=docker.io/library/caddy:2
-          Network=nextcloudnet
+          Network=nextcloud
           # Map ports 80/443 (rootlesskit handles privileged ports)
           PublishPort=80:80
           PublishPort=443:443
