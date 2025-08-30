@@ -2,7 +2,7 @@
 # This is the configuration defining runtime environment for the installer
 
 variant: fcos
-version: 1.5.0
+version: {{FCOS_VER}}
 
 passwd:
   users:

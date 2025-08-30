@@ -25,7 +25,7 @@
 #                    https://<NEXTCLOUD_TRUSTED_DOMAIN>/caddy/nextcloud.pem
 
 variant: fcos
-version: 1.5.0
+version: {{FCOS_VER}}
 
 boot_device:
   luks:
