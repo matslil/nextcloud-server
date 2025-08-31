@@ -56,6 +56,27 @@ storage:
     # Enable user lingering for core (rootless systemd user services at boot)
     - path: /var/lib/systemd/linger
       mode: 0755
+    # Configuration directories for podman user
+    - path: /var/home/podman/.config
+      mode: 0700
+      user: { name: podman }
+      group: { name: podman }
+    - path: /var/home/podman/.config/systemd
+      mode: 0700
+      user: { name: podman }
+      group: { name: podman }
+    - path: /var/home/podman/.config/msmtp
+      mode: 0700
+      user: { name: podman }
+      group: { name: podman }
+    - path: /var/home/podman/.config/containers
+      mode: 0700
+      user: { name: podman }
+      group: { name: podman }
+    - path: /var/home/podman/.config/containers/systemd
+      mode: 0700
+      user: { name: podman }
+      group: { name: podman }
 
   links:
     # Place public certificate in a place accessible from web
