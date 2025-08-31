@@ -18,7 +18,7 @@
 #
 # The following quadlets are being setup:
 #     NextCloud    - Implements the main functionality
-#     Redis        - ??
+#     Redis        - Key-value in-memory database used as a cache
 #     PostgreSQL   - Database for NextCloud meta-data storage
 #     Caddy        - HTTP/HTTPS proxy for NextCloud, currently only support internal
 #                    SSL certificate which can be downloaded at
@@ -33,16 +33,20 @@ boot_device:
 
 passwd:
   users:
+    # Administrator account
     - name: core
       groups: [ wheel ]
       ssh_authorized_keys:
         - {{CORE_USER_SSH_PUB}}
       password_hash: {{CORE_USER_PW_HASH}}
+    # Account used by quadlets
     - name: podman
       groups: [ "systemd-journal" ]
       no_create_home: false
       home_dir: /var/home/podman
       shell: /bin/bash
+    # Account used by performance co-pilot (PCP)
+    - name: pcp
 
 storage:
   directories:
@@ -288,10 +292,7 @@ storage:
           EnvironmentFile=%h/.config/containers/redis.env
           Volume=/var/pods/redis:/data:Z
           # Arguments
-          --appendonly
-          yes
-          --requirepass
-          $${REDIS_PASSWORD}
+          ContainerArgs=--appendonly yes --requirepass $${REDIS_PASSWORD}
 
           [Service]
           Restart=always
@@ -531,7 +532,7 @@ systemd:
 
         [Service]
         Type=oneshot
-        ExecStart=/bin/sh -c "echo -e 'Subject: [NextCloud server] System $(hostname) booted at $(date)' | msmtp -t {{ADMIN_EMAIL}}"
+        ExecStart=/bin/sh -c "echo -e 'Subject: [NextCloud server] System $(hostname) booted at $(date)' | /usr/bin/msmtp -t {{ADMIN_EMAIL}}"
 
         [Install]
         WantedBy=multi-user.target
@@ -548,5 +549,5 @@ systemd:
 
         [Service]
         Type=oneshot
-        ExecStart=/bin/sh -c "echo -e 'Subject: [NextCloud server] Service %i failed on $(hostname) at $(date)' | msmtp -t {{ADMIN_EMAIL}}"
+        ExecStart=/bin/sh -c "echo -e 'Subject: [NextCloud server] Service %i failed on $(hostname) at $(date)' | /usr/bin/msmtp -t {{ADMIN_EMAIL}}"
 

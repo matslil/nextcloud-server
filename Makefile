@@ -74,7 +74,7 @@ $(TMPPATH)/%.ign: $(TMPPATH)/%.bu $(MAKEFILE_LIST) | prerequisites
 $(TMPPATH)/setup-server.bu: setup-server.template.bu core-ssh-key core-login-pwd zfs-dataset-key $(TMPPATH)/postgresql-pwd $(TMPPATH)/redis-pwd $(TMPPATH)/nextcloud-admin-pwd $(MAKEFILE_LIST) | prerequisites
 	jinja2 \
 	--strict \
-	-D FCOS_VER="$(FCOS_VERS)" \
+	-D FCOS_VER="$(FCOS_VER)" \
 	-D CORE_USER_SSH_PUB="$$(cat core-ssh-key.pub)" \
 	-D CORE_USER_PW_HASH="$$(cat core-login-pwd | mkpasswd --method=SHA-512 --stdin)" \
 	-D ADMIN_EMAIL="$(ADMIN_EMAIL)" \
@@ -90,7 +90,7 @@ $(TMPPATH)/setup-server.bu: setup-server.template.bu core-ssh-key core-login-pwd
 $(TMPPATH)/setup-installer.bu: setup-installer.template.bu core-ssh-key core-login-pwd $(MAKEFILE_LIST) | prerequisites
 	jinja2 \
 	--strict \
-	-D FCOS_VER="$(FCOS_VERS)" \
+	-D FCOS_VER="$(FCOS_VER)" \
 	-D CORE_USER_SSH_PUB="$$(cat core-ssh-key.pub)" \
 	-D CORE_USER_PW_HASH="$$(cat core-login-pwd | mkpasswd --method=SHA-512 --stdin)" \
 	--outfile "$@" "$<"
