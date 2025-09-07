@@ -80,7 +80,7 @@ storage:
 
   links:
     # Place public certificate in a place accessible from web
-    - path: /var/pods/caddy/var/www/nextcloud.crt
+    - path: /var/pods/caddy/www/nextcloud.crt
       target: srv/pods/caddy/pki/authorities/local/root.crt
       hard: false
 
@@ -124,7 +124,7 @@ storage:
       contents:
         inline: |
           #!/usr/bin/env bash
-          exec /usr/bin/runuser -u podman -- /usr/bin/podman exec msmtpd msmtp "$@"
+          exec /usr/bin/runuser -u podman -- /usr/bin/podman exec msmtp msmtp "$@"
 
     # ZFS setup script (creates pool/datasets on first boot after rebase)
     - path: /usr/local/bin/zfs-setup
@@ -174,6 +174,7 @@ storage:
           /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/var/pods/caddy            "${POOL}/caddy"             || true
           /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/var/pods/caddy/www        "${POOL}/caddy/www"         || true
           /usr/sbin/zfs create ${COMMON_OPTS} -o mountpoint=/var/pods/caddy/certs      "${POOL}/caddy/certs"       || true
+          ln -s srv/pods/caddy/pki/authorities/local/root.crt /var/pods/caddy/www/nextcloud.crt
 
           chown -R podman:podman /var/pods
           mkdir -p /etc/zfs && touch "${MARKER}"
@@ -271,15 +272,15 @@ storage:
           [Network]
           Driver=bridge
 
-    # msmtpd quadlet: Mail transfer agent
-    - path: /var/home/podman/.config/containers/systemd/msmtpd.container
+    # msmtp quadlet: Mail transfer agent
+    - path: /var/home/podman/.config/containers/systemd/msmtp.container
       mode: 0644
       user: { name: podman }
       group: { name: podman }
       contents:
         inline: |
           [Unit]
-          Description=msmtpd mail transfer agent (rootless)
+          Description=msmtp mail transfer agent (rootless)
           After=nextcloud-network.service
           Requires=nextcloud-network.service
 
@@ -526,15 +527,12 @@ systemd:
         # start podman user's units
         ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user daemon-reload'
         ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user enable --now nextcloud-network.service'
-        ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user enable --now msmtpd.service'
+        ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user enable --now msmtp.service'
         ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user enable --now postgres.service redis.service nextcloud.service caddy.service'
         ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user enable --now pg-amcheck.timer'
 
         # enable user timers (failure notify is implicit via OnFailure on each)
         ExecStart=/usr/bin/runuser -l podman -c 'systemctl --user daemon-reload'
-
-        # enable weekly ZFS scrub + Postgres validation timers
-        ExecStart=/usr/bin/systemctl enable --now zfs-scrub@data.timer
 
         ExecStart=/usr/bin/touch /etc/ucore-autorebase/setup
         ExecStart=/usr/bin/systemctl disable post-setup.service
@@ -557,7 +555,7 @@ systemd:
 
         [Service]
         Type=oneshot
-        ExecStart=/usr/sbin/zpool scrub tank
+        ExecStart=/usr/sbin/zpool scrub data
 
     # Timer: Run weekly (Sunday 02:00)
     - name: zfs-scrub.timer
