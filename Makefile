@@ -10,12 +10,7 @@ TALOS_ARCH := amd64
 ISO_NAME := nextcloud-talos.iso
 HELMVALUES := $(TMPPATH)/nextcloud-values.yaml
 
-# Deployment variables
-ADMIN_EMAIL ?=
-GMAIL_APP_PW ?=
-NEXTCLOUD_TRUST_DOMAIN ?=
-BOOTDISK ?=
-DATADISKS ?=
+vpath nextcloud-patch.yaml.template $(SRCPATH)/talos
 
 .ONESHELL:
 
@@ -61,42 +56,46 @@ iso: $(ISO_NAME)
 	EOI
 
 $(ISO_NAME): $(TMPPATH)/talos.iso $(TMPPATH)/clusterconfig/controlplane.yaml | prerequisites
-	       cp $(TMPPATH)/talos.iso $(ISO_NAME)
+	cp $(TMPPATH)/talos.iso $(ISO_NAME)
 
 $(TMPPATH)/clusterconfig/controlplane.yaml: $(TMPPATH)/nextcloud-patch.yaml | prerequisites
-	       talosctl gen config nextcloud https://$(CONTROL_PLANE_IP):6443 \
-	               --config-patch @$(TMPPATH)/nextcloud-patch.yaml \
-	               --output $(TMPPATH)/clusterconfig
+	talosctl gen config nextcloud https://$(CONTROL_PLANE_IP):6443 \
+	        --config-patch @$< \
+	        --output $(@D)
 
 $(TMPPATH)/talos.iso: | prerequisites
 	curl -L -o "$@" https://github.com/siderolabs/talos/releases/download/$(TALOS_VER)/talos-$(TALOS_ARCH).iso
 
 prerequisites: $(TMPPATH)
-	       @check_cmds () { for cmd in "$$@"; do command -v $$cmd >/dev/null || { echo "$$cmd: Command not installed: Need the following executables: $$@"; exit 1; }; done }
-	       check_cmds talosctl curl helm
-	       @check_envs () { for env in "$$@"; do [[ -n "$${!env}" ]] || { echo "$$env: Variable not set"; exit 1; }; done }
-	       check_envs CONTROL_PLANE_IP ADMIN_EMAIL GMAIL_APP_PW NEXTCLOUD_TRUST_DOMAIN BOOTDISK DATADISKS
+	@check_cmds () { for cmd in "$$@"; do command -v $$cmd >/dev/null || { echo "$$cmd: Command not installed: Need the following executables: $$@"; exit 1; }; done }
+	check_cmds talosctl curl helm
+	@check_envs () { for env in "$$@"; do [[ -n "$${!env}" ]] || { echo "$$env: Variable not set"; exit 1; }; done }
+	check_envs CONTROL_PLANE_IP ADMIN_EMAIL GMAIL_APP_PW NEXTCLOUD_TRUST_DOMAIN BOOTDISK DATADISKS
 
 $(TMPPATH):
 		mkdir -p "$@"
 
+test: export ADMIN_EMAIL = test@example.com
+test: export GMAIL_APP_PW = faksepw
+test: export NEXTCLOUD_TRUST_DOMAIN = 127.0.0.1
+test: export BOOTDISK = /dev/vda
+test: export DATADISKS = /dev/vdb /dev/vdc /dev/vdd /dev/vde
 test: export CONTROL_PLANE_IP=127.0.0.1
 test: $(ISO_NAME)
-	       @echo "No automated tests implemented for Talos ISO build."
+	$(SRCDIR)/tests/ci-run-tests.sh "$<"
 
-$(TMPPATH)/nextcloud-patch.yaml: talos/nextcloud-patch.yaml.template | $(TMPPATH)
-	       export DATADISKS_YAML="$$(printf '    - device: %s\n' $(DATADISKS))"; \
-	       envsubst < $< > $@
+$(TMPPATH)/nextcloud-patch.yaml: nextcloud-patch.yaml.template | $(TMPPATH)
+	envsubst < $< > $@
 
 $(HELMVALUES): charts/nextcloud-stack/values.yaml | prerequisites
-	       envsubst < $< > $@
+	envsubst < $< > $@
 
 helm-values: $(HELMVALUES)
-	       @echo "Helm values written to $(HELMVALUES)"
+	@echo "Helm values written to $(HELMVALUES)"
 
 helm-deploy: helm-values
-	       helm dependency update charts/nextcloud-stack
-	       helm upgrade --install nextcloud charts/nextcloud-stack -f $(HELMVALUES)
+	helm dependency update charts/nextcloud-stack
+	helm upgrade --install nextcloud charts/nextcloud-stack -f $(HELMVALUES)
 
 deploy: helm-deploy
 

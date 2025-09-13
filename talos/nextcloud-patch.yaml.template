@@ -4,7 +4,7 @@ machine:
   install:
     disk: ${BOOTDISK}
   disks:
-${DATADISKS_YAML}
+    - device: ${DATADISKS}
   network:
     hostname: nextcloud
   filesystems:
