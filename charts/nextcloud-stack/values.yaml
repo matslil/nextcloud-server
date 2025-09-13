@@ -4,8 +4,14 @@ nextcloud:
   ingress:
     enabled: true
     hostname: nextcloud.example.com
+  webserver:
+    type: nginx
+  smtp:
+    host: msmtp
+    port: 25
   persistence:
     enabled: true
+    existingClaim: nextcloud-zfs-pvc
     size: 10Gi
   mariadb:
     enabled: false

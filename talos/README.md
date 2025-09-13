@@ -34,3 +34,7 @@ helm install nextcloud charts/nextcloud-stack
 
 The default `values.yaml` enables PostgreSQL and Redis subcharts and exposes Nextcloud through an ingress at
 `nextcloud.example.com`. Adjust the values file to match your environment.
+
+To swap the default Apache web server for NGINX, set `nextcloud.webserver.type` to `nginx` in `values.yaml`.
+Outbound email can be handled by a lightweight `msmtp` agent by configuring `nextcloud.smtp.host` accordingly.
+For persistent storage backed by ZFS, create a dataset and expose it via a Kubernetes PersistentVolumeClaim, then reference it using `nextcloud.persistence.existingClaim`.

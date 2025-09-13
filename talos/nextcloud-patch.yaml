@@ -5,6 +5,10 @@ machine:
     disk: /dev/sda
   network:
     hostname: nextcloud
+  filesystems:
+    - device: tank/nextcloud
+      mountpoint: /var/lib/containers
+      type: zfs
 cluster:
   network:
     cni:
