@@ -45,6 +45,18 @@ Deploy
 
 dd yadayada
 
+Testing
+=======
+
+To verify the image in a virtual environment, run:
+
+    make test
+
+This builds the ISO image, boots it inside QEMU with five virtual disks and
+forwards host port 8080 to the guest's HTTPS port. The script waits for the
+installation to complete and then probes `https://localhost:8080/status.php`
+to ensure Nextcloud responds.
+
 Design
 ======
 

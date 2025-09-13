@@ -119,3 +119,12 @@ prerequisites: $(TMPPATH)
 $(TMPPATH):
 	mkdir -p "$(TMPPATH)"
 
+.PHONY: test
+test: export ADMIN_EMAIL = admin@example.com
+test: export NEXTCLOUD_TRUSTED_DOMAIN = 127.0.0.1
+test: export GMAIL_APP_PW = dummy-app-password
+test: export BOOTDISK = /dev/vda
+test: export DATADISKS = /dev/vdb /dev/vdc /dev/vdd /dev/vde
+test: ucore-minimal-auto.iso
+	$(SRCPATH)/tests/ci-run-tests.sh "$<"
+
