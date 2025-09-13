@@ -1,14 +1,16 @@
 ---
 nextcloud:
-  host: nextcloud.example.com
+  host: ${NEXTCLOUD_TRUST_DOMAIN}
   ingress:
     enabled: true
-    hostname: nextcloud.example.com
+    hostname: ${NEXTCLOUD_TRUST_DOMAIN}
   webserver:
     type: nginx
   smtp:
     host: msmtp
     port: 25
+    username: ${ADMIN_EMAIL}
+    password: ${GMAIL_APP_PW}
   persistence:
     enabled: true
     existingClaim: nextcloud-zfs-pvc

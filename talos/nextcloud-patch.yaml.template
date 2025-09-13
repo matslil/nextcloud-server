@@ -2,7 +2,9 @@
 # Patch to customize Talos machine configuration for Nextcloud
 machine:
   install:
-    disk: /dev/sda
+    disk: ${BOOTDISK}
+  disks:
+${DATADISKS_YAML}
   network:
     hostname: nextcloud
   filesystems:
