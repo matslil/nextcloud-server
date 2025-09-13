@@ -1,0 +1,11 @@
+---
+# Patch to customize Talos machine configuration for Nextcloud
+machine:
+  install:
+    disk: /dev/sda
+  network:
+    hostname: nextcloud
+cluster:
+  network:
+    cni:
+      name: custom

@@ -1,0 +1,11 @@
+---
+apiVersion: v2
+name: nextcloud-stack
+description: >-
+  Umbrella chart deploying Nextcloud with PostgreSQL and Redis on Talos
+version: 0.1.0
+type: application
+dependencies:
+  - name: nextcloud
+    version: 6.3.2
+    repository: https://charts.bitnami.com/bitnami

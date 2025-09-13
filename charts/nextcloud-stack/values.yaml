@@ -1,0 +1,21 @@
+---
+nextcloud:
+  host: nextcloud.example.com
+  ingress:
+    enabled: true
+    hostname: nextcloud.example.com
+  persistence:
+    enabled: true
+    size: 10Gi
+  mariadb:
+    enabled: false
+  postgresql:
+    enabled: true
+    auth:
+      username: nextcloud
+      password: nextcloud
+      database: nextcloud
+  redis:
+    enabled: true
+    auth:
+      password: nextcloud

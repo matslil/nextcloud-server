@@ -3,6 +3,8 @@ Welcome to NextCloud server repository!
 This repository implements needed scripts for spinning up a new NextCloud server. The goal is to
 be able to deploy a new NextCloud instance without a lot of hassle.
 
+For a Talos Linux and Helm-based deployment, see the resources under `talos/` and `charts/`.
+
 The process is as follows:
 
 1. Install needed packages used in the ISO image build, see section "Preparation" below.
