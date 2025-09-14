@@ -1,0 +1,12 @@
+# This YAML file describes what ISO image we want to download for our build
+#
+# NOTE: We want a signed kernel, which means this is the only place we can provide
+#       kernel arguments!
+
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/amd-ucode
+      - siderolabs/crun
+      - siderolabs/zfs
+

@@ -2,9 +2,10 @@
 # Patch to customize Talos machine configuration for Nextcloud
 machine:
   install:
-    disk: ${BOOTDISK}
+    image: factory.talos.dev/metal-installer/{{TALOS_ID}}
+    disk: {{BOOTDISK}}
   disks:
-    - device: ${DATADISKS}
+    - device: {{DATADISKS}}
   network:
     hostname: nextcloud
   filesystems:
