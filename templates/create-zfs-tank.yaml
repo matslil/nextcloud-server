@@ -1,0 +1,28 @@
+# templates/kube/zfs-pool-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: zfs-create-pool
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      nodeSelector:
+        storage.zfs/pool: "tank"
+      hostPID: true
+      hostNetwork: true
+      containers:
+        - name: mkpool
+          image: debian:stable
+          securityContext:
+            privileged: true
+          command: ["/bin/sh","-c"]
+          args:
+            - >
+              nsenter --mount=/proc/1/ns/mnt -- bash -lc '
+              if ! zpool status tank >/dev/null 2>&1; then
+                zpool create -f -o dedup=off o ashift=12 -O atime=off -O xattr=sa -O compression=lz4
+                  tank raidz2 {{ join " " .Values.DATADISKS }};
+              fi'
+      restartPolicy: OnFailure
+

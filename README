@@ -104,3 +104,44 @@ The design goals were:
 - Root device is auto-crypted using TPM hardware
 - ZFS datasets are crypted using key file in root filesystem, also available from the build for recovery purpose.
 
+
+Talos
+=====
+
+Investigate:
+
+Backup/recovery:
+- Velero
+
+Monitoring and alerting
+- Prometheus
+- Grafana
+- Alert Manager OpenEBS plugin
+
+Security policies:
+- PodSecurityPolicies
+- Kyerno
+
+Logging
+- ELK
+- Loki
+- Logstash
+
+Visualization:
+- Kubernetes Dashboard
+- Grafana dashboard
+
+OpenEBS
+-------
+
+Provides persistent storage for containers.
+Is implemented by itself as container(s). Implements the Kubernetes Container Storage Interface (CSI).
+
+Containers does a Persistent Volume Claims (PVC). OpenEBS translates these to Persistent Volumes (PV).
+
+Note that OpenEBS builds on top of existing storage infrastructure, i.e. does not do partitioning of disks.
+
+    helm repo add openebs https://openebs.github.io/openebs
+    helm repo update
+    helm install openebs --namespace openebs openebs/openebs --set engines.replicated.mayastor.enabled=false --create-namespace --set zfs-localpv.zfsNode.kubeletDir=<your-directory-path>
+
