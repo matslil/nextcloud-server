@@ -4336,7 +4336,7 @@ prometheus:
     ##
     volumeClaimTemplate:
       spec:
-        storageClassName: prometheus
+        storageClassName: pv-prometheus
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:

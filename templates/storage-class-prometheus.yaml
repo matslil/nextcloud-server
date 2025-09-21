@@ -1,0 +1,21 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: pv-prometheus
+provisioner: zfs.csi.openebs.io
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  poolname: "tank"
+  fstype: "zfs"
+  recordsize: "16k"
+  compression: "lz4"
+  dedup: "off"
+  thinProvision: "yes"
+  encryption: "aes-256-gcm"
+  keyformat: "raw"
+  keylocation: "file:///var/zfs/zfs-dataset-key"
+  atime: "off"
+  xattr: "sa"
+  acltype: "posixacl"
+
