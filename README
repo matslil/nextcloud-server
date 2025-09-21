@@ -13,23 +13,42 @@ The process is as follows:
 
 The last part of this document describes how it is all designed.
 
+Prerequisites
+=============
+
+- Good knowledge about booting Linux live image and using command shell including dmesg command.
+  Or knows how to ask an AI for help about this.
+- Have a DHCP you know how to configure
+- USB memory stick to store a boot image on
+- Server to install on with at least 5 discs
+
 Preparations
 ============
 
-Ensure you have `coreos-installer` and `butane` executables.
+Make sure you have assigned a static IP for your machine. This most likely means you need to know the MAC address,
+which sometimes can be seen on the motherboard. Otherwise, boot up a live Linux distro image, go to the command
+shell, and use `ip link` to determine the MAC address. Use this MAC address to tell your DHCP server that this
+MAC address should be assigned a static IP address. This static address is referred to as `CONTROL_PLANE_IP` below.
 
-To install them on Fedora:
+Also check with `dmesg` the name of your disc devices. One of them need to be specified as `BOOTDISC`, which is
+the disc the server will boot from and will also contain the root file system. The rest (at least 4) will be
+specified as `DATADISCS`.
 
-    sudo dnf install coreos-installer butane python3-jinja2-cli
+Talm
+----
 
-To install them on Ubuntu:
+Install Talm to your `~/bin` directory:
 
-    sudo apt install podman butane and install coreos-installer
+    mkdir -p ~/bin
+    cd ~/bin
+    curl --silent --show-error --location https://github.com/cozystack/talm/releases/latest/download/talm-linux-amd64.tar.gz | tar xz talm
 
-Before building, make sure you have a domain name and static IP address for the server.
-The domain name should be recognised by your internal DNS.
+Make sure `PATH` environment variable includes `~/bin`.
 
-While the IP address should be static, it is still assigned to the server using DHCP.
+Packages - Fedora
+-----------------
+
+    dnf install helm
 
 Build
 =====
@@ -62,29 +81,31 @@ to ensure Nextcloud responds.
 Design
 ======
 
-The server will run uCore Linux distribution, which is a variant of CoreOs, which in turn is a variant of Fedora.
-
-CoreOS is a container centric distribution focusing on Podman. This repository uses this to create rootless
-quadlet containers, i.e. containers started using systemd with user context rather than root context.
-
-There will be two accounts pre-defined, `core` and `podman`. The `core` user account is for administration
-tasks, while `podman` is what is used when starting the rootless quadlets.
-
-Note that current implementation assumes there will be five disks, first will contain the root filesystem,
-the other four will be combined into a ZFS RAID6 device which are then split into volumes that the
-containers can use for persistent data storage.
-
-The server will run Caddy, which can be used to get public certificate for the HTTPS access using Let's Encrypt.
-This is not implemented in this repository. Instead you need to download a private, self-signed certificate
-from the web server at `https://<your server ip>/caddy/<cert file name>.crt` and tell your browser to trust
-this as a root certificate.
-
-It is possible to get a public certificate using Let's Encrypt even if the server is not accessible from
-the Internet using DNS-01 challenges. This requires an application password (token) to be assigned to
-Caddy for doing a TXT DNS record update used to prove you own the domain. This application password needs to
-be given to you by your DNS provider.
 
 The design goals were:
+
+- Server runs containers, which implements all needed services
+- Git repository plus some user configuration should be all needed to deploy a new server
+- Easy to perform safe upgrades, preferably in an automated way
+
+Services to be implemented are:
+- NextCloud - For most of the user provided services
+- PostgreSQL - Database, used by NextCloud
+- Redis - In memory database for cache purpose, used by NextCloud
+- Caddy - Web proxy/server, used as front-end to NextCloud to provide HTTPS access
+- Keycloak - For single sign-on support
+- Msmtp - Simple mail transfer agent to send mail notifications
+
+Components used to implement the infrastructure:
+- Talos - Linux distribution centered around containers
+- Talm - Bootstrap Talos on a new machine, uses Helm
+- Helm - Templated Kubernetes container deployment
+- Kubernetes - Container deployment and maintenance tool
+- OpenEBS - Persistent storage backend for Kubernetes
+- FluxCD - Keep containers up to date using git repository as reference
+- Kustomize - Application configuration management, built into kubectl
+- RBAC - Extension of Kubernetes to handle permissions, used for FluxCD permissions
+- Prometheus - Collect and aggregate metrics about the containers
 
 - Using rootless Podman containers, implemented as quadlets
 - First disk used as root file system, with default setup
@@ -118,10 +139,6 @@ Monitoring and alerting
 - Grafana
 - Alert Manager OpenEBS plugin
 
-Security policies:
-- PodSecurityPolicies
-- Kyerno
-
 Logging
 - ELK
 - Loki
@@ -131,17 +148,32 @@ Visualization:
 - Kubernetes Dashboard
 - Grafana dashboard
 
+Single sign-on
+- Keycloak
+
+Web proxy
+- Caddy
+
+Cache
+- Redis
+
+Cloud services
+- NextCloud
+
 OpenEBS
 -------
 
 Provides persistent storage for containers.
 Is implemented by itself as container(s). Implements the Kubernetes Container Storage Interface (CSI).
 
-Containers does a Persistent Volume Claims (PVC). OpenEBS translates these to Persistent Volumes (PV).
+Containers does a Persistent Volume Claims (PVC). A persistent volume claim specify what storage class it needs, and properties of the volume such as size and access (read, write). OpenEBS translates the persistent volume claim  to Persistent Volumes (PV). By default a storage class will only allow one container to access a specific persistent volume. This default can be overridden in the storage class by specifying `shared: "yes` under parameters.
 
 Note that OpenEBS builds on top of existing storage infrastructure, i.e. does not do partitioning of disks.
 
     helm repo add openebs https://openebs.github.io/openebs
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
     helm repo update
     helm install openebs --namespace openebs openebs/openebs --set engines.replicated.mayastor.enabled=false --create-namespace --set zfs-localpv.zfsNode.kubeletDir=<your-directory-path>
+    kubectl create ns monitoring
+    helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring -f prometheus-settings.yaml
 
