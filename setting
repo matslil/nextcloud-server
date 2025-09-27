@@ -1,0 +1,67 @@
+#!/bin/bash
+set -euo pipefail
+
+if [[ ${1:-} == '--delete' ]]; then
+    readonly OP=delete
+fi
+
+readonly FILE=$1
+readonly KEY=$2
+
+if [[ $# -gt 2 ]]; then
+    readonly NEW_VALUE=$3
+    if [[ -n $NEW_VALUE ]]; then
+        readonly OP=set
+    fi
+elif [[ ! -v OP ]]; then
+    readonly OP=get
+fi
+
+declare -A settings
+
+# we'll use extglob for easy whitespace trimming
+shopt -s extglob
+
+if [[ -f $FILE ]]; then
+    while IFS= read -r line || [[ -n $line ]]; do
+      # skip blank lines or lines whose first non-space is '#'
+      [[ $line =~ ^[[:space:]]*(#|$) ]] && continue
+
+      # split on the first '=' only
+      key=${line%%=*}
+      val=${line#*=}
+      [[ $key == "$line" ]] && continue   # no '=' present -> skip
+
+      # trim whitespace around key and value (keep inner quotes intact)
+      key=${key##+([[:space:]])}; key=${key%%+([[:space:]])}
+      val=${val##+([[:space:]])}; val=${val%%+([[:space:]])}
+
+      settings["$key"]=$val   # quotes in $val are preserved literally
+    done < "$FILE"
+fi
+
+write_settings() {
+    {
+        for key in "${!settings[@]}"; do
+            printf '%s=%s\n' "$key" "${settings[$key]}"
+        done
+    } > "$FILE"
+}
+
+
+if [[ $OP = set ]]; then
+    if [[ ! -v settings[$KEY] ]] || [[ $NEW_VALUE != "${settings[$KEY]}" ]]; then
+        settings[$KEY]="$NEW_VALUE"
+        write_settings
+    fi
+elif [[ $OP = get ]]; then
+    if [[ -v settings[$KEY] ]]; then
+        printf '%s' "${settings[$KEY]}"
+    fi
+elif [[ $OP = delete ]]; then
+    if [[ -v settings[$KEY] ]]; then
+        unset -v 'map[$KEY]'
+        write_settings
+    fi
+fi
+

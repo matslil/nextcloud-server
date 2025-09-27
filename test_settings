@@ -1,0 +1,76 @@
+#!/bin/bash -x
+# shellcheck disable=SC2181
+set -euo pipefail
+
+declare -a CMDLINE
+declare TRACE
+declare -i RC
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+readonly SCRIPT_DIR
+TEST_FILE=$(realpath --canonicalize-missing "./settings.test")
+readonly TEST_FILE
+
+[[ ! -f $TEST_FILE ]] || rm settings.test
+
+fail() {
+    printf 'Failing command..: "%s"\n' "${CMDLINE[*]}"
+    printf 'Command exit code: %d\n' "$RC"
+    printf 'Test file........: "%s"\n' "$TEST_FILE"
+    printf 'Trace:\n%s' "$TRACE"
+    printf 'FAIL: %s: Aborting\n' "$1"
+    exit 1
+}
+
+setting() {
+  CMDLINE=( "$SCRIPT_DIR/setting" "$TEST_FILE" "$@" )
+
+  # In this 'if', we capture FD4 (the TRACE stream) into $TRACE.
+  # We ALSO arrange a second FD (5) that points to the caller's stdout,
+  # so we can print the command's stdout there on success.
+  if TRACE=$(
+    {
+      local out
+      # Send xTRACE to FD3; forward FD3 into FD4, which this $(...) captures.
+      # Also route the script's stderr to FD3 (remove "2>&3" if you want only xTRACE).
+      out=$(BASH_XTRACEFD=3 bash -x "${CMDLINE[@]}" \
+              3> >(cat >&4) 2>&3)
+      RC=$?
+      (( RC == 0 )) && printf '%s' "$out" >&5   # success: return stdout to caller
+      exit "$RC"                                # propagate the script's status
+    } 4>&1 5>&1
+  ); then
+    return 0
+  else
+    fail "setting returned error"
+  fi
+}
+
+[[ $(setting Alpha) = "" ]] || fail "Non-existent file did not return empty value for key Alpha"
+
+[[ $(setting Alpha Beta) ]] || fail "Could not create a new settings file"
+
+[[ $(setting Alpha) = Beta ]] || fail "Could not read key Alpha from settings file"
+
+[[ $(setting Alpha Gamma) ]] || fail "Error return when changing value of key Alpha"
+
+[[ $(setting Alpha) = Gamma ]] || fail "Wrong value read for key Alpha"
+
+[[ $(setting Beta) == "" ]] || fail "Getting value of non-exitent key in existing key file did not return empty value"
+
+[[ $(setting Beta Alpha) ]] || fail "Failed setting second key in key file"
+
+[[ $(setting Beta) = Alpha ]] || fail "Failed reading key Beta from file"
+
+[[ $(setting Beta Beta) ]] || fail "Could not change value of key Beta"
+
+[[ $(setting Beta) ]] || fail "Could not read updated value of key Beta"
+
+[[ $(setting Alpha "") ]] || fail "Clearing existing value of key Alpha returned error"
+
+[[ $(setting Alpha) == "" ]] || fail "Cleared value of Alpha did not read as empty"
+
+[[ $(setting --delete Alpha) ]] || fail "Could not delete key Alpha"
+
+[[ $(setting Alpha) = "" ]] || fail "Deleted key Alpha does not read as empty"
+
