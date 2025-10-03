@@ -1,18 +1,58 @@
----
-# Patch to customize Talos machine configuration for Nextcloud
+# templates/machine.yaml
+# Render with: talm template -f templates/machine.yaml > rendered-machine.yaml
+# Required values:
+#   bootdisk: "/dev/disk/by-id/XYZ"
+#   datadisks:
+#     - "/dev/disk/by-id/diskA"
+#     - "/dev/disk/by-id/diskB"
+#     - "/dev/disk/by-id/diskC"
+#     - "/dev/disk/by-id/diskD"
+#     # (add more as needed)
+
+version: v1alpha1
+
 machine:
+  # Change to "worker" if this node is not a control-plane server.
+  type: controlplane
+
   install:
-    image: factory.talos.dev/metal-installer/{{TALOS_ID}}
-    disk: {{BOOTDISK}}
+    # Root OS install target (your ${BOOTDISK})
+    disk: {{ required "values.bootdisk is required" .Values.bootdisk | quote }}
+    # Recommended defaults: wipe the install disk to avoid stale metadata.
+    wipe: true
+    image: {{ required "values.installerImage (secureboot) is required" .Values.installerImage | quote }}
+
+  # Networking omitted → defaults to DHCP on all NICs.
+
+  # (Optional but recommended) pre-wipe the ZFS member disks so pool creation is clean.
+  # This expands the same device list you’ll use for the ZFS pool below.
   disks:
-    - device: {{DATADISKS}}
-  network:
-    hostname: nextcloud
+    {{- if not .Values.datadisks }}
+    {{- fail "values.datadisks must be a non-empty list" }}
+    {{- end }}
+    {{- range .Values.datadisks }}
+    - device: {{ . | quote }}
+      wipe: true
+    {{- end }}
+
   filesystems:
-    - device: tank/nextcloud
-      mountpoint: /var/lib/containers
-      type: zfs
+    - name: tank
+      # If you want the dataset mounted in Talos, set a mountpoint (optional).
+      mountpoint: /mnt/tank
+      zfs:
+        pool: tank
+        raidLevel: raidz2
+        # Use the same devices list for the ZFS pool members
+        devices:
+          {{- range .Values.datadisks }}
+          - {{ . | quote }}
+          {{- end }}
+
 cluster:
-  network:
-    cni:
-      name: custom
+  # If you already know your API endpoint/VIP, you can set it via values without making it required.
+  # Example to provide via values.yaml:
+  #   controlPlaneEndpoint: "https://10.0.0.10:6443"
+  # If not provided, it falls back to a harmless placeholder you can edit later.
+  controlPlane:
+    endpoint: {{ .Values.controlPlaneEndpoint | default "https://127.0.0.1:6443" | quote }}
+

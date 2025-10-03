@@ -14,7 +14,9 @@ ISO_NAME := talos-$(TALOS_VER)-$(TALOS_ARCH)-secureboot.iso
 HELMVALUES := $(TMPPATH)/nextcloud-values.yaml
 
 vpath boot-image.yaml $(SRCPATH)
+vpath install-image.template.yaml $(SRCPATH)
 vpath *.yaml $(SRCPATH)/templates
+vpath ci-run-tests.sh $(SRCPATH)/tests
 
 .ONESHELL:
 
@@ -25,18 +27,18 @@ help:
 	Builds a Talos Linux ISO image that will deploy Nextcloud.
 	
 	Syntax:
-	   make iso -f <reporoot>/Makefile CONTROL_PLANE_IP=<ip> \
-	      ADMIN_EMAIL=<admin email> GMAIL_APP_PW=<GMail app pw> \
-	      NEXTCLOUD_TRUST_DOMAIN=<host/ip> BOOTDISK=<disk> \
-	      DATADISKS="<disk1> <disk2> ..."
+	   make iso -f <reporoot>/Makefile control_plane_ip=<ip> \
+	      admin_email=<admin email> gmail_app_pw=<GMail app pw> \
+	      nextcloud_trust_domain=<host/ip> bootdisk=<disk> \
+	      datadisks="<disk1> <disk2> ..."
 	
 	Variables:
-	   CONTROL_PLANE_IP       Control plane IP or DNS name for generated Talos config.
-	   ADMIN_EMAIL            E-mail associated with GMAIL_APP_PW, used for notifications.
-	   GMAIL_APP_PW           Application password for the Gmail account ADMIN_EMAIL.
-	   NEXTCLOUD_TRUST_DOMAIN Domain name or IP of the server to be deployed.
-	   BOOTDISK               Name of boot disk for Talos install, e.g. "/dev/sda".
-	   DATADISKS              Space separated list of additional data disks.
+	   control_plane_ip       Control plane IP or DNS name for generated Talos config.
+	   admin_email            E-mail associated with GMAIL_APP_PW, used for notifications.
+	   gmail_app_pw           Application password for the Gmail account ADMIN_EMAIL.
+	   nextcloud_trust_domain Domain name or IP of the server to be deployed.
+	   bootdisk               Name of boot disk for Talos install, e.g. "/dev/sda".
+	   datadisks              Space separated list of additional data disks.
 	
 	Files created:
 	   build/                  Directory with intermediate build files
@@ -79,36 +81,35 @@ tool.%:
 # Ensure this environment variable has been set in the settings file.
 # If not, expect the variable to exist and have a value
 env.%:
-	@current_value=$$(yq -r e '.$| // ""' settings.yml)
-	if [[ $$current_value != "$($|)" ]]; then
-		yq -e -i '.$$| = "$($|)"' settings.yml
+	@key=$*; \
+	val="$($*)"; \
+	[ -n "$$val" ] || { echo "$$key: Setting missing"; exit 1; }; \
+	[ -f values.yaml ] || echo "{}" > values.yaml; \
+	current=$$(yq -r e ".$$key // \"\"" values.yaml); \
+	if [ "$$current" != "$$val" ]; then \
+		NEWVAL="$$val" yq -i e ".$$key = strenv(NEWVAL)" values.yaml; \
+		echo "Updated $$key in values.yaml"; \
 	fi
-	[[ -n $$current_value ]] || [[ -n $($|) ]] || { echo "$|: Setting missing"; exit 1; }"
 
 $(TMPPATH):
 		mkdir -p "$@"
 
 .PHONY: install
 
-install: $(TMPPATH)/controlplane.yaml | prerequisites
-	talosctl -n $(CONTROL_PLANE_IP) apply-config --insecure -f $<
+install: $(TMPPATH)/install.yaml
+	talosctl apply-config --insecure --nodes $(control_plane_ip) --file $<
 
-$(TMPPATH)/controlplane.yaml talosconfig: $(TMPPATH)/install.yaml | prerequisites
-	talosctl gen config nextcloud https://$(CONTROL_PLANE_IP):6443 \
-	        --config-patch @$< \
-	        --output $(@D)
+$(TMPPATH)/install.yaml: install-image.template.yaml values.yaml $(TMPPATH)/talos.id
+	talm template -f values.yaml -f $< --set-string installerImage="factory.talos.dev/installer-secureboot/$(cat $(TMPPATH)/talos.id)/:$(TALOS_VER)"
 
-$(TMPPATH)/install.yaml: install.template.yaml
-	jinja2 --outfile $@ -D CONTROL_PLANE_IP="$(CONTROL_PLANE_IP)" -D BOOTDISK="$(BOOTDISK)" -D DATADISKS="$(DATADISKS)" $<
-
-test: export ADMIN_EMAIL = test@example.com
-test: export GMAIL_APP_PW = faksepw
-test: export NEXTCLOUD_TRUST_DOMAIN = 127.0.0.1
-test: export BOOTDISK = /dev/vda
-test: export DATADISKS = /dev/vdb /dev/vdc /dev/vdd /dev/vde
-test: export CONTROL_PLANE_IP=127.0.0.1
-test: $(ISO_NAME)
-	$(SRCDIR)/tests/ci-run-tests.sh "$<"
+test: export admin_email = test@example.com
+test: export gmail_app_pw = faksepw
+test: export nextcloud_trust_domain = 127.0.0.1
+test: export bootdisk = /dev/vda
+test: export datadisks = /dev/vdb /dev/vdc /dev/vdd /dev/vde
+test: export control_plane_ip = 127.0.0.1
+test: ci-run-tests.sh $(ISO_NAME) | env.admin_email env.gmail_app_pw env.nextcloud_trust_domain env.bootdisk env.datadisks env.control_plane_ip
+	$< "$(ISO_NAME)"
 
 $(TMPPATH)/nextcloud-patch.yaml: nextcloud-patch.yaml.template | $(TMPPATH)
 	envsubst < $< > $@
