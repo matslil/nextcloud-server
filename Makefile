@@ -8,12 +8,13 @@ SHELL := /bin/bash
 SRCPATH := $(abspath $(dir $(shell readlink -e $(lastword $(MAKEFILE_LIST)))))
 TMPPATH := $(abspath ./build)
 
-TALOS_VER := v1.5.5
+TALOS_VER := v1.11.2
 TALOS_ARCH := amd64
-ISO_NAME := nextcloud-talos.iso
+ISO_NAME := talos-$(TALOS_VER)-$(TALOS_ARCH)-secureboot.iso
 HELMVALUES := $(TMPPATH)/nextcloud-values.yaml
 
-vpath *.template.yaml $(SRCPATH)
+vpath boot-image.yaml $(SRCPATH)
+vpath *.yaml $(SRCPATH)/templates
 
 .ONESHELL:
 
@@ -60,20 +61,29 @@ iso: $(ISO_NAME)
 	    sudo dd if=./$(ISO_NAME) of=<disk> bs=4096k
 	EOI
 
-$(ISO_NAME): $(TMPPATH)/talos.iso $(TMPPATH)/clusterconfig/controlplane.yaml | prerequisites
-	cp $(TMPPATH)/talos.iso $(ISO_NAME)
+$(ISO_NAME): $(TMPPATH)/talos.id $(TMPPATH)
+	curl -L -o "$@" https://factory.talos.dev/image/$$(cat $<)/$(TALOS_VER)/metal-$(TALOS_ARCH)-secureboot.iso
 
-$(TMPPATH)/talos.iso: talos.id | prerequisites
-	curl -L -o "$@" https://github.com/siderolabs/talos/releases/download/$(TALOS_VER)/talos-$(TALOS_ARCH).iso
-
-$(TMPPATH)/talos.id: iso-image.yaml | prerequisites
-	curl -X POST --data-binary @iso-image.yaml https://factory.talos.dev/schematics | jq --raw-output '.id' > $@
+$(TMPPATH)/talos.id: boot-image.yaml $(TMPPATH) | tool.curl
+	curl -X POST --data-binary @$< https://factory.talos.dev/schematics | jq --raw-output '.id' > $@
 
 prerequisites: $(TMPPATH)
-	@check_cmds () { for cmd in "$$@"; do command -v $$cmd >/dev/null || { echo "$$cmd: Command not installed: Need the following executables: $$@"; exit 1; }; done }
-	check_cmds talosctl curl helm
-	@check_envs () { for env in "$$@"; do [[ -n "$${!env}" ]] || { echo "$$env: Variable not set"; exit 1; }; done }
-	check_envs CONTROL_PLANE_IP ADMIN_EMAIL GMAIL_APP_PW NEXTCLOUD_TRUST_DOMAIN BOOTDISK DATADISKS
+
+# Stem is the name of the command line tool
+# Ensure it can be run, write error message otherwise
+.PHONY: tool.%
+tool.%:
+	@command -v $| >/dev/null || { echo "$|: Command not installed"; exit 1; }
+
+# Stem is the name of the environment variable.
+# Ensure this environment variable has been set in the settings file.
+# If not, expect the variable to exist and have a value
+env.%:
+	@current_value=$$(yq -r e '.$| // ""' settings.yml)
+	if [[ $$current_value != "$($|)" ]]; then
+		yq -e -i '.$$| = "$($|)"' settings.yml
+	fi
+	[[ -n $$current_value ]] || [[ -n $($|) ]] || { echo "$|: Setting missing"; exit 1; }"
 
 $(TMPPATH):
 		mkdir -p "$@"

@@ -102,10 +102,14 @@ Components used to implement the infrastructure:
 - Helm - Templated Kubernetes container deployment
 - Kubernetes - Container deployment and maintenance tool
 - OpenEBS - Persistent storage backend for Kubernetes
+- Alert Manager - Plugin to OpenEBS to create alerts for Prometheus
 - FluxCD - Keep containers up to date using git repository as reference
 - Kustomize - Application configuration management, built into kubectl
 - RBAC - Extension of Kubernetes to handle permissions, used for FluxCD permissions
 - Prometheus - Collect and aggregate metrics about the containers
+- Etcd - Configuration storage
+- ZFS - Filesystem for implementing persistent storage. Uses encryption with a key shared for all datasets. Supports snapshot, and user data bit corrections.
+- K8up - Scheduled backup persistent volume data to manually rotated USB disks
 
 - Using rootless Podman containers, implemented as quadlets
 - First disk used as root file system, with default setup
@@ -130,14 +134,6 @@ Talos
 =====
 
 Investigate:
-
-Backup/recovery:
-- Velero
-
-Monitoring and alerting
-- Prometheus
-- Grafana
-- Alert Manager OpenEBS plugin
 
 Logging
 - ELK
@@ -172,8 +168,9 @@ Note that OpenEBS builds on top of existing storage infrastructure, i.e. does no
 
     helm repo add openebs https://openebs.github.io/openebs
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    helm repo add nextcloud https://nextcloud.github.io/helm/
     helm repo update
     helm install openebs --namespace openebs openebs/openebs --set engines.replicated.mayastor.enabled=false --create-namespace --set zfs-localpv.zfsNode.kubeletDir=<your-directory-path>
     kubectl create ns monitoring
     helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring -f prometheus-settings.yaml
-
+    helm install my-release nextcloud/nextcloud
