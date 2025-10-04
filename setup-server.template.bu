@@ -1,3 +1,5 @@
+# NOTE: This script is obsolete! It's content should be moved to Helm charts.
+
 # This is the uCore butane template file for a NextCloud server.
 # It will be run through jinja2 expanding the following macros:
 #     CORE_USER_SSH_PUB        - SSH public key for core admin account

@@ -7,18 +7,18 @@ SHELL := /bin/bash
 
 SRCPATH := $(abspath $(dir $(shell readlink -e $(lastword $(MAKEFILE_LIST)))))
 BOOTSTRAP_PATH := $(SRCPATH)/bootstrap
-TALOS_PATH := $(BOOTSTRAP_PATH)/talos
 K8S_PATH := $(SRCPATH)/kubernetes
-TMPPATH := $(abspath ./build)
-TSTPATH := $(abspath ./test)
+OUTPATH := $(abspath .)
+TMPPATH := $(OUTPATH)/build
+TSTPATH := $(OUTPATH)/test
 
 TALOS_VER := v1.11.2
 TALOS_ARCH := amd64
 ISO_NAME := talos-$(TALOS_VER)-$(TALOS_ARCH)-secureboot.iso
 HELMVALUES := $(TMPPATH)/nextcloud-values.yaml
 
-vpath boot-image.yaml $(TALOS_PATH)
-vpath install-image.template.yaml $(TALOS_PATH)
+vpath boot-image.yaml $(BOOTSTRAP_PATH)
+vpath install-image.template.yaml $(BOOTSTRAP_PATH)
 vpath %.yaml $(K8S_PATH)/templates
 vpath test-% $(SRCPATH)/tests
 
@@ -107,11 +107,11 @@ endif
 # $(call prefix-files,<flag>,<list-of-files>)
 prefix-files = $(foreach f,$(1),$(2) $(abspath $(f)))
 
-$(TMPPATH)/install.yaml: install-image.template.yaml values.yaml | $(TMPPATH)/talos.id
+$(TMPPATH)/install.yaml: $(BOOTSTRAP_PATH)/install-image.template.yaml $(OUTPATH)/values.yaml $(TMPPATH)/talos.id
 	set -x
 	ID=$$(cat $(TMPPATH)/talos.id)
 	cd $(SRCPATH)
-	talm template --endpoints "$(control_plane_ip)" --nodes "$(control_plane_ip)" --offline --talos-version "$(TALOS_VER)" --set-string installerImage="factory.talos.dev/installer-secureboot/$$ID/:$(TALOS_VER)" --template $(abspath $<) $(foreach f,$(filter-out $<,$^),--file "$(abspath $f)")
+	talm template --endpoints "$(control_plane_ip)" --nodes "$(control_plane_ip)" --offline --talos-version "$(TALOS_VER)" --set-string installerImage="factory.talos.dev/installer-secureboot/$$ID/:$(TALOS_VER)" --template $(BOOTSTRAP_PATH)/install-image.template.yaml --file $(OUTPATH)/values.yaml
 
 test: export admin_email = test@example.com
 test: export gmail_app_pw = faksepw
