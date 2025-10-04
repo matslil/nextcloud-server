@@ -14,10 +14,19 @@ fail() {
     exit 1
 }
 
-[[ $# == 1 ]] || fail "Expecting just one argument, the ISO image to test"
-[[ -f $1 ]] || fail "$1: Does not look like a file that can be the ISO image to test"
+[[ $# == 3 ]] || fail "Wrong number of arguments: <PID of caller> <PID FILE> <ISO IMAGE>"
 
-readonly ISO_IMAGE=$1
+CALLER_PID=$1
+readonly CALLER_PID
+
+PIDFILE=$2
+readonly PIDFILE
+
+ISO_IMAGE=$3
+readonly ISO_IMAGE
+
+[[ -f $ISO_IMAGE ]] || fail "$ISO_IMAGE: Does not look like a file that can be the ISO image to test"
+realpath "$PIDFILE" &>  /dev/null || fail "$(dirname "$PIDFILE"): Not a valid path"
 
 # Create root and data disks
 qemu-img create -f qcow2 disk0.qcow2 1G
@@ -37,6 +46,18 @@ qemu-system-x86_64 \
   -drive file=disk4.qcow2,if=virtio \
   -netdev user,id=net0,hostfwd=tcp::8080-:443 \
   -device virtio-net-pci,netdev=net0 \
-  -nographic &
-printf '%d' "$!"
+  -daemonize \
+  -pidfile "$PIDFILE"
+
+# Terminate VM when caller PID dies
+(
+    while kill -0 "$CALLER_PID" 2>/dev/null; do
+        sleep 1
+    done
+    if [ -f "$PIDFILE" ]; then
+        echo "make has exited, killing QEMU..."
+        kill "$(cat "$PIDFILE")" 2>/dev/null || true
+        rm -f "$PIDFILE"
+    fi
+) &
 

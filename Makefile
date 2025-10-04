@@ -7,6 +7,7 @@ SHELL := /bin/bash
 
 SRCPATH := $(abspath $(dir $(shell readlink -e $(lastword $(MAKEFILE_LIST)))))
 TMPPATH := $(abspath ./build)
+TSTPATH := $(abspath ./test)
 
 TALOS_VER := v1.11.2
 TALOS_ARCH := amd64
@@ -15,12 +16,10 @@ HELMVALUES := $(TMPPATH)/nextcloud-values.yaml
 
 vpath boot-image.yaml $(SRCPATH)
 vpath install-image.template.yaml $(SRCPATH)
-vpath *.yaml $(SRCPATH)/templates
-vpath ci-run-tests.sh $(SRCPATH)/tests
+vpath %.yaml $(SRCPATH)/templates
+vpath test-% $(SRCPATH)/tests
 
 .ONESHELL:
-
-.PHONY: help iso prerequisites test helm-values helm-deploy deploy
 
 help:
 	@cat <<-EOH
@@ -69,8 +68,6 @@ $(ISO_NAME): $(TMPPATH)/talos.id $(TMPPATH)
 $(TMPPATH)/talos.id: boot-image.yaml $(TMPPATH) | tool.curl
 	curl -X POST --data-binary @$< https://factory.talos.dev/schematics | jq --raw-output '.id' > $@
 
-prerequisites: $(TMPPATH)
-
 # Stem is the name of the command line tool
 # Ensure it can be run, write error message otherwise
 .PHONY: tool.%
@@ -81,17 +78,17 @@ tool.%:
 # Ensure this environment variable has been set in the settings file.
 # If not, expect the variable to exist and have a value
 env.%:
-	@key=$*; \
-	val="$($*)"; \
-	[ -n "$$val" ] || { echo "$$key: Setting missing"; exit 1; }; \
-	[ -f values.yaml ] || echo "{}" > values.yaml; \
-	current=$$(yq -r e ".$$key // \"\"" values.yaml); \
-	if [ "$$current" != "$$val" ]; then \
-		NEWVAL="$$val" yq -i e ".$$key = strenv(NEWVAL)" values.yaml; \
-		echo "Updated $$key in values.yaml"; \
+	@key=$*
+	val="$($*)"
+	[ -n "$$val" ] || { echo "$$key: Setting missing"; exit 1; }
+	[ -f values.yaml ] || echo "{}" > values.yaml
+	current=$$(yq -r e ".$$key // \"\"" values.yaml)
+	if [ "$$current" != "$$val" ]; then
+		NEWVAL="$$val" yq -i e ".$$key = strenv(NEWVAL)" values.yaml
+		echo "Updated $$key in values.yaml"
 	fi
 
-$(TMPPATH):
+$(TMPPATH) $(TSTPATH):
 		mkdir -p "$@"
 
 .PHONY: install
@@ -108,13 +105,22 @@ test: export nextcloud_trust_domain = 127.0.0.1
 test: export bootdisk = /dev/vda
 test: export datadisks = /dev/vdb /dev/vdc /dev/vdd /dev/vde
 test: export control_plane_ip = 127.0.0.1
-test: ci-run-tests.sh $(ISO_NAME) | env.admin_email env.gmail_app_pw env.nextcloud_trust_domain env.bootdisk env.datadisks env.control_plane_ip
-	$< "$(ISO_NAME)"
+
+test: $(TSTPATH)/test-boot.pid
+
+.PHONY: test-install
+test-install: 
+
+$(TSTPATH)/test-boot.pid: test-boot.sh $(ISO_NAME) $(TSTPATH) | env.admin_email env.gmail_app_pw env.nextcloud_trust_domain env.bootdisk env.datadisks env.control_plane_ip
+	set -euo pipefail
+	ISO_PATH=$$(realpath "$(ISO_NAME)")
+	cd $(@D)
+	$< "$$PPID" "$@" "$${ISO_PATH}"
 
 $(TMPPATH)/nextcloud-patch.yaml: nextcloud-patch.yaml.template | $(TMPPATH)
 	envsubst < $< > $@
 
-$(HELMVALUES): charts/nextcloud-stack/values.yaml | prerequisites
+$(HELMVALUES): charts/nextcloud-stack/values.yaml
 	envsubst < $< > $@
 
 helm-values: $(HELMVALUES)
