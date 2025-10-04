@@ -1,5 +1,5 @@
-# templates/machine.yaml
-# Render with: talm template -f templates/machine.yaml > rendered-machine.yaml
+# bootstrap/talos/install-image.template.yaml
+# Render with: talm template -f bootstrap/talos/install-image.template.yaml > rendered-machine.yaml
 # Required values:
 #   bootdisk: "/dev/disk/by-id/XYZ"
 #   datadisks:

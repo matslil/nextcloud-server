@@ -6,6 +6,9 @@ MAKEFLAGS += -Rr
 SHELL := /bin/bash
 
 SRCPATH := $(abspath $(dir $(shell readlink -e $(lastword $(MAKEFILE_LIST)))))
+BOOTSTRAP_PATH := $(SRCPATH)/bootstrap
+TALOS_PATH := $(BOOTSTRAP_PATH)/talos
+K8S_PATH := $(SRCPATH)/kubernetes
 TMPPATH := $(abspath ./build)
 TSTPATH := $(abspath ./test)
 
@@ -14,9 +17,9 @@ TALOS_ARCH := amd64
 ISO_NAME := talos-$(TALOS_VER)-$(TALOS_ARCH)-secureboot.iso
 HELMVALUES := $(TMPPATH)/nextcloud-values.yaml
 
-vpath boot-image.yaml $(SRCPATH)
-vpath install-image.template.yaml $(SRCPATH)
-vpath %.yaml $(SRCPATH)/templates
+vpath boot-image.yaml $(TALOS_PATH)
+vpath install-image.template.yaml $(TALOS_PATH)
+vpath %.yaml $(K8S_PATH)/templates
 vpath test-% $(SRCPATH)/tests
 
 .ONESHELL:
@@ -128,15 +131,16 @@ $(TSTPATH)/test-boot.pid: test-boot.sh $(ISO_NAME) $(TSTPATH) | env.admin_email 
 $(TMPPATH)/nextcloud-patch.yaml: nextcloud-patch.yaml.template | $(TMPPATH)
 	envsubst < $< > $@
 
-$(HELMVALUES): charts/nextcloud-stack/values.yaml
+
+$(HELMVALUES): $(K8S_PATH)/charts/nextcloud-stack/values.yaml
 	envsubst < $< > $@
 
 helm-values: $(HELMVALUES)
 	@echo "Helm values written to $(HELMVALUES)"
 
 helm-deploy: helm-values
-	helm dependency update charts/nextcloud-stack
-	helm upgrade --install nextcloud charts/nextcloud-stack -f $(HELMVALUES)
+	helm dependency update $(K8S_PATH)/charts/nextcloud-stack
+	helm upgrade --install nextcloud $(K8S_PATH)/charts/nextcloud-stack -f $(HELMVALUES)
 
 deploy: helm-deploy
 

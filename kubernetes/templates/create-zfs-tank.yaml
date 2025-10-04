@@ -1,4 +1,4 @@
-# templates/kube/zfs-pool-job.yaml
+# kubernetes/templates/create-zfs-tank.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:

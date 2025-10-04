@@ -3,7 +3,17 @@ Welcome to NextCloud server repository!
 This repository implements needed scripts for spinning up a new NextCloud server. The goal is to
 be able to deploy a new NextCloud instance without a lot of hassle.
 
-For a Talos Linux and Helm-based deployment, see the resources under `talos/` and `charts/`.
+Repository layout separates first time bootstrap assets from ongoing Kubernetes
+manifests to avoid collisions between the initial install and day-two
+operations:
+
+- `bootstrap/` – Artifacts used only during the first Talos bootstrap (ISO and
+  install templates) and the optional Podman based bring-up helpers.
+- `kubernetes/` – Helm charts, values and supporting manifests applied and
+  updated by Kubernetes operators post-install.
+
+For a Talos Linux and Helm-based deployment, see the resources under
+`bootstrap/talos/` and `kubernetes/`.
 
 The process is as follows:
 
@@ -172,5 +182,5 @@ Note that OpenEBS builds on top of existing storage infrastructure, i.e. does no
     helm repo update
     helm install openebs --namespace openebs openebs/openebs --set engines.replicated.mayastor.enabled=false --create-namespace --set zfs-localpv.zfsNode.kubeletDir=<your-directory-path>
     kubectl create ns monitoring
-    helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring -f prometheus-settings.yaml
+    helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring -f kubernetes/prometheus-settings.yaml
     helm install my-release nextcloud/nextcloud
