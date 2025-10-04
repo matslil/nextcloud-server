@@ -96,8 +96,19 @@ $(TMPPATH) $(TSTPATH):
 install: $(TMPPATH)/install.yaml
 	talosctl apply-config --insecure --nodes $(control_plane_ip) --file $<
 
-$(TMPPATH)/install.yaml: install-image.template.yaml values.yaml $(TMPPATH)/talos.id
-	talm template -f values.yaml -f $< --set-string installerImage="factory.talos.dev/installer-secureboot/$(cat $(TMPPATH)/talos.id)/:$(TALOS_VER)"
+# If running install as part of a test
+ifneq ($(filter test,$(MAKECMDGOALS)),)
+install: $(TSTPATH)/test-boot.pid
+endif
+
+# $(call prefix-files,<flag>,<list-of-files>)
+prefix-files = $(foreach f,$(1),$(2) $(abspath $(f)))
+
+$(TMPPATH)/install.yaml: install-image.template.yaml values.yaml | $(TMPPATH)/talos.id
+	set -x
+	ID=$$(cat $(TMPPATH)/talos.id)
+	cd $(SRCPATH)
+	talm template --endpoints "$(control_plane_ip)" --nodes "$(control_plane_ip)" --offline --talos-version "$(TALOS_VER)" --set-string installerImage="factory.talos.dev/installer-secureboot/$$ID/:$(TALOS_VER)" --template $(abspath $<) $(foreach f,$(filter-out $<,$^),--file "$(abspath $f)")
 
 test: export admin_email = test@example.com
 test: export gmail_app_pw = faksepw
@@ -106,10 +117,7 @@ test: export bootdisk = /dev/vda
 test: export datadisks = /dev/vdb /dev/vdc /dev/vdd /dev/vde
 test: export control_plane_ip = 127.0.0.1
 
-test: $(TSTPATH)/test-boot.pid
-
-.PHONY: test-install
-test-install: 
+test: install
 
 $(TSTPATH)/test-boot.pid: test-boot.sh $(ISO_NAME) $(TSTPATH) | env.admin_email env.gmail_app_pw env.nextcloud_trust_domain env.bootdisk env.datadisks env.control_plane_ip
 	set -euo pipefail
